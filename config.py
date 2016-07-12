@@ -14,12 +14,12 @@ properNounsPath = '/home/mrkelly/Lab/errata/propers.txt'
 
 referencePath   = '/usr/local/share/py/djscripts/data/pickles/'
 
-publicDatapath  = '/mnt/reference/'
-biogridPath     = publicDatapath + 'biogrid_latest'
-emiliomePath    = publicDatapath + 'complexes/emiliome.i'
-bioplexPath     = publicDatapath + 'bioplex.i'
-preppiPath      = publicDatapath + 'preppi_150727_lr600.i'
-domainPairsPath = publicDatapath + 'bioplex_predicted.tsv'
+publicDataPath  = '/mnt/reference/'
+biogridPath     = publicDataPath + 'biogrid_latest'
+emiliomePath    = publicDataPath + 'complexes/emiliome.i'
+bioplexPath     = publicDataPath + 'bioplex.i'
+preppiPath      = publicDataPath + 'preppi_150727_lr600.i'
+domainPairsPath = publicDataPath + 'bioplex_predicted.tsv'
 
 
 filesDict       = { 'hsg' : referencePath + 'hsg_latest' ,
