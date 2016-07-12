@@ -2,6 +2,8 @@ import sys
 import re
 import time
 
+from lib import config as cf
+
 clue_list=["scarlet","mustard","green","white","peacock","plum"] ; 
 clue_tuple=("scarlet","mustard","green","white","peacock","plum") ; 
 clue_dict={ "miss"      : "scarlet",\
@@ -110,7 +112,7 @@ def randomProperNouns(numNouns) :
 
     from random import choice
 
-    wordsf=file('/home/mrkelly/Lab/errata/propers.txt','r') ;
+    wordsf=file( cf.properNounsPath,'r') ;
     chosen_randoms=set() ;
     out=list() ;
 

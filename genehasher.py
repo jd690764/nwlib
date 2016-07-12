@@ -1,6 +1,5 @@
 from lxml import etree 
 import pickle  
-from lib import markutils as mu 
 import sys 
 from os.path import isfile
 import urllib.request, urllib.error, urllib.parse
@@ -8,6 +7,9 @@ import io
 import gzip
 import pprint
 import re
+
+from lib import markutils as mu
+from lib import config as cf
 
 VALID_INDEXING_FIELDS={ 'Symbol','EID','External','Synonym','SwissProt','Peptide','TrEMBL', 'mRNA' }
 EMPTY_CD_DICT={ 'Super' : None , 'Sub' : None, 'Pssm' : None , 'Acc' : None , 'Name' : None , 'Root' : None , 'Desc' : None} ;
@@ -587,14 +589,14 @@ def mkCDDtree(debug=False) :
     if debug : 
         sys.stdout.write('Fetching family_superfamily_links... ') ; 
         sys.stdout.flush() ; 
-    cdFamMap = r2sio(urllib.request.urlopen('ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/family_superfamily_links')) ; 
+    cdFamMap = r2sio(urllib.request.urlopen(cf.superfamilyFtp)) ; 
     if debug : 
         sys.stdout.write('Done\n.') ; 
         sys.stdout.flush() ; 
 
     if debug : 
         sys.stdout.write('Fetching CDDID table ... ') ; 
-    sio = r2sio(urllib.request.urlopen('ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cddid.tbl.gz')) ; 
+    sio = r2sio(urllib.request.urlopen(cf.cddidTableFtp)) ; 
     if debug : 
         sys.stdout.write('Decompressing ... ') ; 
         sys.stdout.flush() ; 

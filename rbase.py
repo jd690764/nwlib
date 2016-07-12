@@ -4,6 +4,8 @@ import colorama
 import sys
 import os
 
+from lib import config as cf
+
 def arm(loc) : 
     out=''
 
@@ -43,20 +45,9 @@ dompairs=None ;
 OUTCOLOR=colorama.Fore.RED
 OUTSTYLE=colorama.Style.BRIGHT
 
-#REFERENCEPATH='/mnt/reference/' ;
-REFERENCEPATH='/usr/local/share/py/djscripts/data/pickles/' ;
+REFERENCEPATH= cf.referencePath ;
 
-FILESDICT={\
-'hsg' : REFERENCEPATH + 'hsg_latest' ,\
-'mmg' : REFERENCEPATH + 'mmg_latest' ,\
-'hmg' : REFERENCEPATH + 'hsmmg_latest' ,\
-'hsp' : REFERENCEPATH + 'hsp_latest' ,\
-'mmp' : REFERENCEPATH + 'mmp_latest' ,\
-'cdd' : REFERENCEPATH + 'cdd_latest' ,\
-'h2m' : REFERENCEPATH + 'h2m_latest' ,\
-'m2h' : REFERENCEPATH + 'm2h_latest' ,\
-'dup' : REFERENCEPATH + 'dup_latest' ,\
-}
+FILESDICT = cf.filesDict 
 
 hsg=None ; 
 mmg=None ; 
@@ -222,7 +213,7 @@ def load_biogrid(filters='default',m2h=False,h2m=False,force_qualify=True,superd
 
     global biogrid ; 
 
-    bgpath= REFERENCEPATH + 'biogrid_latest' ; 
+    bgpath = cf.biogridPath 
 
     from lib import interactors as I 
     from lib import interactors_extras as ie
@@ -254,7 +245,7 @@ def load_preppi() :
     global preppi ; 
     from lib import interactors as I 
     from lib import interactors_extras as ie
-    preppipath= REFERENCEPATH + 'preppi_150727_lr600.i' ; 
+    preppipath = cf.preppiPath ; 
     preppi=I.dataSet() ; 
     preppi_f=open(preppipath) ;
     preppi.parse(preppi_f,fd=I.fdms) ; 
@@ -341,9 +332,9 @@ def load_refsuite(filters='default',m2h=False,h2m=False,superdebug=False,force=F
     if refsuite is not None and len(refsuite.nodes) > 0 and not force : 
         return ; 
 
-    bgpath  =   REFERENCEPATH + 'biogrid_latest' ; 
-    empath  =   REFERENCEPATH + '/complexes/emiliome.i' ; 
-    bppath  =   REFERENCEPATH + '/bioplex.i' ; 
+    bgpath  =   cf.biogridPath ; 
+    empath  =   cf.emiliomePath ; 
+    bppath  =   cf.bioplexPath 
 
     mynf=None ; 
     myif=None ; 
@@ -383,7 +374,7 @@ def load_dompairs() :
     global dompairs ; 
     dompairs=list() ; 
 
-    dompairsfile= open( REFERENCEPATH + 'bioplex_predicted.tsv' ,'r' ) 
+    dompairsfile= open( cf.domainPairsPath ,'r' ) 
 
     for line in dompairsfile :  
         linel=line.strip().split('\t') ; 

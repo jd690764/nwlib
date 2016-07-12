@@ -1,8 +1,10 @@
-from Bio import Entrez 
 import re
 import io
 import urllib.request, urllib.error, urllib.parse  
 import sys
+
+from Bio import Entrez
+from lib import config as cf
 
 #
 #   Conventions : 'find' indicates an internet search
@@ -547,7 +549,7 @@ def fetchSw(swiss,asTuple=False,timeout=5) :
 
     while tries < 3 :
         try : 
-            ur=urllib.request.urlopen('http://www.uniprot.org/uniprot/'+swiss+'.fasta',timeout=timeout) ;
+            ur=urllib.request.urlopen(cf.uniprotUrl+swiss+'.fasta',timeout=timeout) ;
             break ; 
         except IOError : 
             tries += 1; 

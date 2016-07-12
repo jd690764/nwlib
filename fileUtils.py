@@ -4,6 +4,8 @@ import pycurl, sys, traceback, logging
 import gzip
 import yaml
 
+from lib import config as cf
+
 def unzip(zipFilePath, destDir):
     zfile = zipfile.ZipFile(zipFilePath)
     for name in zfile.namelist():
@@ -64,7 +66,7 @@ def read_config( yamlfile ):
 
     for dsd in ds_dicts : 
         lost_files = 0 
-        if not os.path.isfile('./'+dsd['infilename']) and not os.path.isfile('/mnt/msrepo/ifiles/'+dsd['infilename']) : 
+        if not os.path.isfile('./'+dsd['infilename']) and not os.path.isfile( cf.ifilesPath + dsd['infilename']) : 
             print('File '+dsd['infilename']+' not found.') ;
             lost_files += 1 ; 
 

@@ -1,8 +1,5 @@
-from lib import interactors as I 
-from lib import markutils as mu
 import sys
 import re
-from lib import rbase
 from urllib.error import HTTPError
 import numpy as np
 from os.path import isfile
@@ -13,11 +10,15 @@ from scipy.stats.distributions import norm, truncnorm
 from statsmodels.sandbox.stats.multicomp import multipletests
 from mpmath import mp as mpmns
 
+from lib import interactors as I 
+from lib import markutils as mu
+from lib import rbase
+from lib import config as cf
 
 sow=sys.stdout.write
 sew=sys.stderr.write
 
-CONTROL_FILES  = '/mnt/reference/control_panels/'
+CONTROL_FILES  = cf.controlFiles
 PSEUDO_DEFAULT = 1e-5
 
 def topgroup(keykeys,wns,wes=None,remove_empty_groups=True,print_summary=True) : 
@@ -1164,10 +1165,10 @@ def madfilter(dataset,ctrl_fname,baitkey,qual=None,directed=False,as_dict=False,
     import os
     from scipy.stats.distributions import norm
     if not os.path.isfile(ctrl_fname) and not \
-     os.path.isfile('/mnt/reference/control_panels/'+ctrl_fname) :
+     os.path.isfile( cf.controlFiles + ctrl_fname) :
         raise FileNotFoundError('Could not find '+ctrl_fname) ;
-    elif os.path.isfile('/mnt/reference/control_panels/'+ctrl_fname) : 
-        fn='/mnt/reference/control_panels/'+ctrl_fname ; 
+    elif os.path.isfile( cf.controlFiles + ctrl_fname) : 
+        fn = cf.controlFiles + ctrl_fname ; 
     else : 
         fn=ctrl_fname ;
 
