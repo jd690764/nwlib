@@ -726,7 +726,7 @@ def pubGetAbs(rec) :
     if not abstract_items : 
         return 'N/A' ; 
 
-    return fill(''.join([a.text for a in abstract_items])) ; 
+    return str(''.join([a.text for a in abstract_items])) ; 
 
     
 def pubGetTitle(rec) : 
@@ -741,7 +741,7 @@ def pubGetTitle(rec) :
     if not title_items : 
         return 'N/A' ; 
 
-    return fill(''.join([a.text for a in title_items])) ; 
+    return str(''.join([a.text for a in title_items])) ; 
 
 def pubdump(pmids,of=sys.stdout,screens=False) : 
     ws=set(pmids)
@@ -755,3 +755,63 @@ def pubdump(pmids,of=sys.stdout,screens=False) :
         of.write('{:~<60}\n'.format('')) ;
         of.write(pubGetAbs(rec)+'\n\n\n')
         of.write('{:+<60}\n'.format('')) ;
+
+def pubGetDate(rec) : 
+    from lxml import etree
+
+    rec.seek(0) ; 
+    thetree=etree.parse(rec)
+
+    if thetree.findall('.//PubmedBookArticle') : 
+        # for books
+        year=thetree.findall('.//PubDate')[0].text
+        month='12'
+        day='31'
+    else : 
+        datetree=thetree.findall('.//DateCreated')[0] ; 
+        year,month,day=[ datetree[i].text for i in range(len(datetree)) ]
+
+    return year+month+day
+
+def publication_history(pmids,of=sys.stdout,screens=False) : 
+
+    #allrecs=list() ;
+    from textwrap import fill
+
+    recs=fetchPubBatch(pmids,screens=screens) ;
+
+    rectups=[ (rec,pubGetDate(rec),pubGetPMID(rec)) for rec in recs ] ; 
+
+    srecs=sorted(rectups,key=lambda x : x[1]) ;
+
+    for sr in srecs : 
+        fulltitle   =  pubGetTitle(sr[0])
+
+        hrdate=sr[1][0:4]+'-'+sr[1][4:6]+'-'+sr[1][6:] 
+
+        of.write(hrdate+' : '+sr[2]+'\n'+fill(fulltitle)+'\n'  ) ; 
+
+def pubGetPMID(rec) : 
+    from lxml import etree
+    rec.seek(0) 
+    thetree=etree.parse(rec)
+    return thetree.findall('.//PMID')[0].text
+
+
+def fetchPubBatch(pmids,screens=False) : 
+    ws=set(pmids)
+    if not screens : 
+        ws -= BIG_SCREENS
+
+    from multiprocessing import Pool
+    thepool=Pool(processes=24)
+    recs=thepool.map(fetchPub,ws)
+    thepool.close()
+    thepool.join()
+
+
+    for r in recs : 
+        r.seek(0) ; 
+    return recs
+    
+
