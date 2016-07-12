@@ -2,11 +2,13 @@ import sys
 import os.path
 import pickle
 import numpy as np
-from lib.markutils import tabulate
 from scipy.stats.distributions import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-IFILES = '/mnt/msrepo/ifiles/'
+from lib.markutils import tabulate
+from lib import config as cf
+
+IFILES = cv.ifilesPath
 
 def filesForBkgd( infile ):
 

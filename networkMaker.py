@@ -11,11 +11,12 @@ from lib import interactors as I
 from lib import interactors_extras as ie
 from lib import rbase
 from lib.markutils import b4us,afterus
+from lib import config as cf
 
 DB           = False
 deprecation  = colorama.Fore.RED+" DEPRECATED 21 APRIL 2016 "+colorama.Fore.RESET
-config       = { 'ifiles' : '/mnt/msrepo/ifiles/',
-                 'publicDatadir' : '/mnt/reference/',
+config       = { 'ifiles' : cf.ifilesPath,
+                 'publicDatadir' : cf.publicDataPath,
                  'youtfilename' : '',
                  'outfilename'  : '',
                  'rescue_f'     : None }
