@@ -820,6 +820,9 @@ class dataSet(object):
     def parse( self, infobj, sep = '\t', fd = None, h2m = False, m2h = False, directed = False, qualify = '',
                force_qualify = False, force_score = None ) :
 
+        if type(infobj) is str : 
+            infobj=open(infobj) ;
+
         self.infilenames.append( infobj.name )
         
         filelines   = sum( 1 for line in infobj ) ;
