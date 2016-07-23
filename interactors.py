@@ -53,7 +53,7 @@ keyer=lambda x : x.offical + '_' + x.entrez ;
 FORCE_MATCH_QUAL=True
 # I'm not sure why I would ever want this to be false tbh.
 
-debugout=open('.interactors_dbg_log.txt','w') ; 
+#debugout=open('.interactors_dbg_log.txt','w') ; 
 
 def ee(ek1,ek2) : 
     """
@@ -591,9 +591,9 @@ class dataSet(object):
         else : 
             self.correction_dict = correction_dict ; 
 
-        if ( self.debug ) :
-            debugout.write("DEBUG:   Sizes at initialization:\n Interactions : {} ; Nodes : {} ; Corrections : {} \n"\
-            .format(len(self.the_data),len(self.nodes),len(self.correction_dict))) ; 
+        #if ( self.debug ) :
+            #debugout.write("DEBUG:   Sizes at initialization:\n Interactions : {} ; Nodes : {} ; Corrections : {} \n"\
+            #.format(len(self.the_data),len(self.nodes),len(self.correction_dict))) ; 
 
 
     def _add_node( self, node ):
@@ -624,8 +624,8 @@ class dataSet(object):
         """
 
         if self.i_filter and not ( self.i_filter and self.i_filter.test( iaction )):
-            if self.debug:
-                debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
+            #if self.debug:
+            #    debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
             return False
         else:
             if not iaction.interID in self.the_data.keys():
