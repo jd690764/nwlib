@@ -7,6 +7,7 @@ import os
 import time
 from subprocess import  call
 import pickle
+import openpyxl as ox
 
 import lib.markutils as mu
 import lib.peputils as pep 
@@ -17,7 +18,7 @@ from network.models import Entrez, Ncbiprot
 
 tremblre      = re.compile(r'.*tr\|([^\|]{6})\|.*') 
 swisspre      = re.compile(r'.*sp\|([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})\|.*', re.IGNORECASE ) 
-entrezre      = re.compile(r'.*ref\|([^\|]*)\|.*') 
+entrezre      = re.compile(r'.*ref\|([\d]+)\|.*') 
 symbolre      = re.compile(r'.*GN=([A-Za-z0-9]*).*') 
 proteinre     = re.compile(r'.*ref\|([ANYXZ]P_\d+)\.?\d{0,2}\|.*') 
 PSEUDO_LENGTH = 375.0
@@ -241,13 +242,15 @@ class MSdata(object) :
 
         f.close()
 
-    def set_background(self,fname,bestpepdb='RPHs',reference = hsgREF) : 
-        import openpyxl as ox
+    def set_background( self, fname, bestpepdb = 'RPHs', reference = hsgREF ) :
+
+        if bestpepdb == 'RPMm':
+            reference = mmgREF
+        
         self.background = dict() 
 
-        wb=ox.load_workbook(fname) 
-
-        ws=wb['Proteins'] 
+        wb = ox.load_workbook(fname) 
+        ws = wb['Proteins'] 
         # to protein worksheet
         # identifiers in col 2, # of spectra in column 6 (0-indexed)
 
@@ -532,7 +535,7 @@ class MSdata(object) :
         w  = 0
         W  = len(self.fwdata)
         for d in self.fwdata : 
-
+            print( len( reference['eid'] ))
             ( entrez, sym, org ) = desc_interpreter( d.desc, tryhard = tryhard, debug = debug,
                                                      bestpepdb = bestpepdb, reference = reference )
 
@@ -782,7 +785,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
     org     = None 
 
     if debug:
-        print( 'description to match: ' + desc + '\n' + str(symbolre) + '\n')
+        print( 'description to match: ' + desc + '\n' )
     
     me      = entrezre.match( desc )
     ms      = swisspre.match( desc ) 
@@ -808,7 +811,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
     if mg : 
         fromsyn = reference['synonym'].get(mg.group(1),'') 
     if mp : 
-        frompep = reference['peptide'].get(mp.group(1),'') 
+        frompep = reference['peptide'].get(mp.group(1),'')
 
     mid     = dict() 
     fromall = list() 
