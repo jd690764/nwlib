@@ -482,6 +482,24 @@ class node(object):
     def __str__( self ):
         return( str(self.key) )
     
+    def nneighbors( self, within_edge_set = None ) :
+        """
+            node.degree(self,within_edge_set = None) :
+
+            returns the number of nodes that link to this one.
+            If within_edge_set is supplied, ONLY count nodes
+            that are linked by one or more of the provided edges
+
+        """
+        # python doesn't pass by reference
+        if not within_edge_set : 
+            return len([ k for k in list(self.partners.keys()) ])
+        else : 
+           return len([ k for k in list(self.partners.keys()) \
+            if self.binds(k,within_edge_set=within_edge_set) ]) ; 
+            # of nodes (because the edges dict is keyed by node) that have
+            # some edges in the acceptable edge set (viz. second line does not produce empty set)
+    
     def degree( self, within_edge_set = None ) :
         """
             node.degree(self,within_edge_set = None) :
@@ -492,8 +510,6 @@ class node(object):
 
         """
         # python doesn't pass by reference
-
-
         if not within_edge_set : 
             return len([ k for k in list(self.edges.keys()) ])
         else : 
