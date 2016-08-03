@@ -556,3 +556,32 @@ def pubdump(pmids,**kwargs) :
     pubdump(pmids,**kwargs) ; 
 
 # RESUME : update dict to map terminal entries
+
+def eidLen( eid, gends=hsg,pepds=hsp, suppress = True ) : 
+
+    if not gends or not pepds : 
+        raise TypeError('Reference database not initialized') ;
+
+    try : 
+        possPeps = gends[eid]['peptide']
+    except (TypeError,KeyError) : 
+        return 375.0 
+
+    taxon = hmg['eid'][eid]['taxid']
+    pepds = hmg if taxon == '9606' else mPEP
+
+    isnp  = lambda acc : 'NP_' in acc and acc in pepds.keys() 
+    isxp  = lambda acc : 'XP_' in acc and acc in pepds.keys() 
+
+    for pep in possPeps : 
+
+        if   any([ isnp(x) for x in possPeps ]) : 
+            return np.mean([ pepds[x]['length'] for x in possPeps if isnp(x) ])
+        elif any([ isxp(x) for x in possPeps ]) :
+            return np.mean([ pepds[x]['length'] for x in possPeps if isxp(x) ])
+        else : 
+            if not suppress : 
+                sys.stderr.write('NOTE: No satisfactory peptide accessions for eid {}, using average length of 375.\n'.format(eid)) 
+            return PSEUDO_LENGTH
+
+    return PSEUDO_LENGTH

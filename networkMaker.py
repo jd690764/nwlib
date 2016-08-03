@@ -285,7 +285,7 @@ def secondaryFiltration( nwdata, c ):
                     nodes_pass2.add(nk)
                     break
 
-        elif c['nwd'] and nk in c['node_pass1_all'] and nwdata.nodes[nk].degree(within_edge_set = vqe) >= c['rescue_deg'] :
+        elif c['nwd'] and nk in c['node_pass1_all'] and nwdata.nodes[nk].nneighbors(within_edge_set = vqe) >= c['rescue_deg'] :
             # rationale for this filter:
             nodes_pass2.add(nk)
 
