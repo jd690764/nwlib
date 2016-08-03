@@ -1238,7 +1238,8 @@ def mad(series) :
     return np.percentile(np.abs(series-np.percentile(series,50)),50) ; 
     
 def madfilter_corr( dataset,                # network dataset to process, interactors.dataSet instance
-                    ctrl_fname,             # control file name to use, pickled syms,medians mads 
+                    ctrl_fname,             # control file name to use, pickled syms,medians mads (*.cp2))
+                    #                         or a *.txt file listing one ifile per line 
                     baitkey,                # key for the bait in dataset
                     qual     = None,        # qualifier for this bait,
                     directed = False,       # is the network directed/non-
@@ -1267,6 +1268,12 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     else : 
         fn = ctrl_fname ;
 
+    # if the reference file is just a list of .i files, create the pickled datafile
+    if re.match( '.*\.txt$', fn ):
+        outf = re.sub( '\.txt', '\.cp2', fn )
+        createReferenceFile( fn, outf )
+        fn   = outf
+        
     if debug : 
         sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : fname is '+fn+'\n') ;
 
@@ -1418,3 +1425,60 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     else :
         return passed
 
+def createReferenceFile( inputFile, outputFile ):
+
+    alldatadict = dict()
+    with open( inputFile ) as f : 
+    for line in f : 
+        alldatadict.update( {line.strip():dict()} ) ;
+
+    #    def mad(series) : 
+    #        return np.percentile(np.abs(series-np.percentile(series,50)),50) ; 
+
+    for fn in alldatadict.keys() :
+        f = open( cf.ifilesPath + fn ) 
+        f.readline()
+        for ll in mu.tabulate(f) : 
+            alldatadict[fn].update({ ll[2] : np.float(ll[3]) })
+        f.close() ;
+
+    pseudodict     = { k : alldatadict[k]['PSEUDO'] for k in alldatadict }
+    pskeys         = list(pseudodict.keys())
+    pslogvals      = np.log10(list(pseudodict.values()))
+    pslogmad       = mad(pslogvals) ; 
+    pslogmedian    = np.percentile(pslogvals,50)
+    pslvps_hi      = 1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
+    #pslvps_lo=1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
+
+    rejected_ds_hi = multipletests(pslvps_hi,alpha=0.05)[0]
+    #rejected_ds_lo=multipletests(pslvps_lo,alpha=0.05)[0]
+
+    allfns         = list()
+    allsyms        = set()
+    for i in range(len(rejected_ds_hi)) : 
+        if rejected_ds_hi[i] : 
+            sys.stderr.write('WARNING: '+pskeys[i]+' is a pseudocount outlier '+\
+                             'and as such will NOT be incorporated\n')
+        else : 
+            allfns.append(pskeys[i]) ; 
+            allsyms |= set(alldatadict[pskeys[i]].keys())
+
+    allsyms        = list(allsyms) ; 
+
+    # creation of the all-symbols all-fns grid
+    #allsyms=list({ k for fn in alldatadict.keys() for k in alldatadict[fn].keys() })
+    #allfns=list(alldatadict.keys())
+
+    grid           = np.zeros((len(allsyms),len(allfns)))
+
+    for i in range(len(allsyms)) : 
+        for j in range(len(allfns)) : 
+            grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
+
+    loggrid        = np.log10(grid) ;
+    logmads        = np.fromiter( ( mad(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
+    logmeans       = np.fromiter( ( np.mean(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
+    logmedians     = np.fromiter( ( np.percentile(loggrid[i,:],50) for i in range(len(allsyms)) ),dtype=np.float) ; 
+
+    with open( outputFile,'wb') as f : 
+        pickle.dump( (allsyms, allfns, loggrid), f ) ; 
