@@ -1,4 +1,5 @@
 
+djPath          = '/usr/local/share/py/djscripts/'
 
 superfamilyFtp  = 'ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/family_superfamily_links'
 cddIdTableFtp   = 'ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cddid.tbl.gz'
@@ -16,7 +17,9 @@ referencePath   = '/usr/local/share/py/djscripts/data/pickles/'
 
 publicDataPath  = '/mnt/reference/'
 biogridPath     = publicDataPath + 'biogrid_latest'
-emiliomePath    = publicDataPath + 'complexes/emiliome.i'
+#emiliomePath    = publicDataPath + 'complexes/emiliome.i'
+emiliomePath    = 'data/pickles/emiliome.i'
+emiliomeV2Path    = 'data/pickles/emiliomeV2.i'
 bioplexPath     = publicDataPath + 'bioplex.i'
 preppiPath      = publicDataPath + 'preppi_150727_lr600.i'
 domainPairsPath = publicDataPath + 'bioplex_predicted.tsv'
