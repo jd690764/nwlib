@@ -53,7 +53,7 @@ keyer=lambda x : x.offical + '_' + x.entrez ;
 FORCE_MATCH_QUAL=True
 # I'm not sure why I would ever want this to be false tbh.
 
-#debugout=open('.interactors_dbg_log.txt','w') ; 
+debugout=open('tmp/interactors_dbg_log.txt','w') ; 
 
 def ee(ek1,ek2) : 
     """
@@ -482,6 +482,24 @@ class node(object):
     def __str__( self ):
         return( str(self.key) )
     
+    def nneighbors( self, within_edge_set = None ) :
+        """
+            node.degree(self,within_edge_set = None) :
+
+            returns the number of nodes that link to this one.
+            If within_edge_set is supplied, ONLY count nodes
+            that are linked by one or more of the provided edges
+
+        """
+        # python doesn't pass by reference
+        if not within_edge_set : 
+            return len([ k for k in list(self.partners.keys()) ])
+        else : 
+           return len([ k for k in list(self.partners.keys()) \
+            if self.binds(k,within_edge_set=within_edge_set) ]) ; 
+            # of nodes (because the edges dict is keyed by node) that have
+            # some edges in the acceptable edge set (viz. second line does not produce empty set)
+    
     def degree( self, within_edge_set = None ) :
         """
             node.degree(self,within_edge_set = None) :
@@ -492,8 +510,6 @@ class node(object):
 
         """
         # python doesn't pass by reference
-
-
         if not within_edge_set : 
             return len([ k for k in list(self.edges.keys()) ])
         else : 
@@ -565,10 +581,10 @@ class dataSet(object):
 
         if self.n_filter is not None and self.n_filter in FILTER:
             self.n_filter = FILTER[ self.n_filter ]()
-
+                    
         if self.i_filter is not None and self.i_filter in FILTER:
             self.i_filter = FILTER[ self.i_filter ]()
-            
+        
         # this will again be a set of interactions, but not necessarily with complete data
         if interactions is None :
             self.the_data = dict() ;
@@ -624,8 +640,8 @@ class dataSet(object):
         """
 
         if self.i_filter and not ( self.i_filter and self.i_filter.test( iaction )):
-            #if self.debug:
-            #    debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
+            if self.debug:
+                debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
             return False
         else:
             if not iaction.interID in self.the_data.keys():
@@ -633,7 +649,8 @@ class dataSet(object):
             
                 # if the interaction belongs to a previously uncharacterized edge
                 if iaction.edgekey() not in self.edges and ei( iaction.edgekey()) not in self.edges : 
-
+                    if self.debug:
+                        debugout.write("DEBUG: New edge created for interaction {}.\n".format( iaction.interID))
                     # create the edge
                     newedge = bgedge( interaction = iaction,
                                       directed    = iaction.directed,
