@@ -28,7 +28,7 @@ def tokey(c, s) :
         else : 
             return s+'_00' ;
     elif c['organism'] == 'mouse':
-        if s in rbase.hmg['Symbol'] : 
+        if s in rbase.mmg['Symbol'] : 
             return s+'_'+rbase.mmg['Symbol'][s]['EID']
         else : 
             return s+'_00' ;
@@ -170,7 +170,7 @@ def readPublicDatasets( nwdata, c ):
         else : 
             pdsf = open(c['publicDatadir'] + pd['infilename'])
 
-        temporaryds = I.dataSet( i_filter = c['iact_filter'] )
+        temporaryds = I.dataSet( i_filter = c['iact_filter'], debug = DB )
         if pd.get('convert') == 'm2h' : 
             temporaryds.parse( pdsf, fd = I.fd_biogrid, m2h = True, qualify = pd.get('qualify',''),
                                directed = False, force_qualify = True )
@@ -335,7 +335,7 @@ def createNetwork( yamlfile ) :
     readYAMLfile( yamlfile, config )
     loadObjects( config )
     
-    theds = I.dataSet(n_filter = config['node_filter'])
+    theds = I.dataSet(n_filter = config['node_filter'], debug = DB)
 
     readInDatasets( theds, config )
 
