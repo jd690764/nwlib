@@ -1429,8 +1429,8 @@ def createReferenceFile( inputFile, outputFile ):
 
     alldatadict = dict()
     with open( inputFile ) as f : 
-    for line in f : 
-        alldatadict.update( {line.strip():dict()} ) ;
+        for line in f : 
+            alldatadict.update( {line.strip():dict()} ) ;
 
     #    def mad(series) : 
     #        return np.percentile(np.abs(series-np.percentile(series,50)),50) ; 
