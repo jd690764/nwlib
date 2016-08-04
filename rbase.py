@@ -445,7 +445,7 @@ def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),
                     sys.stdout.write('\n') ; 
                 else : 
                     if symbols : 
-                        outset.add( e['Symbol'] )
+                        outset.add( rdict['EID'][e]['Symbol'] )
                     else : 
                         outset.add( e )
     else :
@@ -457,7 +457,7 @@ def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),
                     sys.stdout.write('\n') ; 
                 else : 
                     if symbols : 
-                        outset.add( e['Symbol'] )
+                        outset.add( rdict['EID'][e]['Symbol'] )
                     else : 
                         outset.add( e )
 
