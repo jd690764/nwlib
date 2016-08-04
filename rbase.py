@@ -423,11 +423,12 @@ def list_domains(rdict,key,outfields=('Pssm','Name'),root_families=True) :
             sys.stdout.write('\t'.join([cdd['ByPssm'][c][of] for of in outfields])) ; 
             sys.stdout.write('\n') ; 
 
-def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol'])) : 
+def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),write=False,symbols=True) : 
     
     load('cdd') ; 
 
     global VALID_CDDS ;
+    outset=set()
 
     if not VALID_CDDS : 
         VALID_CDDS=set(cdd['ByPssm'].keys()) ; 
@@ -439,14 +440,31 @@ def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']))
         for e in rdict['EID'] : 
             if rdict['EID'][e]['CDD'] is not None and \
              any([ cdd['ByPssm'][c]['Root']['Pssm'] in pssm for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
-                sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
-                sys.stdout.write('\n') ; 
+                if write : 
+                    sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
+                    sys.stdout.write('\n') ; 
+                else : 
+                    if symbols : 
+                        outset.add( e['Symbol'] )
+                    else : 
+                        outset.add( e )
     else :
         for e in rdict['EID'] : 
             if rdict['EID'][e]['CDD'] is not None and \
              any([ cdd['ByPssm'][c]['Pssm'] in pssm for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
-                sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
-                sys.stdout.write('\n') ; 
+                if write : 
+                    sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
+                    sys.stdout.write('\n') ; 
+                else : 
+                    if symbols : 
+                        outset.add( e['Symbol'] )
+                    else : 
+                        outset.add( e )
+
+    if not write : 
+        return outset
+                    
+
 def paperlimit(rdict,limit) : 
 
     papercounts=dict() ;
