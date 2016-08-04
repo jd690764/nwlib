@@ -53,7 +53,7 @@ keyer=lambda x : x.offical + '_' + x.entrez ;
 FORCE_MATCH_QUAL=True
 # I'm not sure why I would ever want this to be false tbh.
 
-debugout=open('tmp/interactors_dbg_log.txt','w') ; 
+#debugout=open('tmp/interactors_dbg_log.txt','w') ; 
 
 def ee(ek1,ek2) : 
     """
