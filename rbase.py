@@ -301,6 +301,7 @@ r'ruvbl.*',\
 highly_variable={\
 r'HIST.*',\
 r'CSNK.*',\
+r'HB[ABGDEZQM][0-9]*',\
 }
 
 pseudogenes={\
@@ -542,7 +543,7 @@ def domroots(domlist) :
 quicksearch=lambda x : rapid(hsg,outfields=('Symbol','Summary')) ; 
 def pmid_pairs(id1,id2,ref=hsg) :
 
-    from engarde import BIG_SCREENS
+    from lib.engarde import BIG_SCREENS
     id1type='s' ; 
     id2type='s' ; 
     try :
@@ -570,7 +571,7 @@ def pmid_pairs(id1,id2,ref=hsg) :
     return pmids1  & pmids2 - E.BIG_SCREENS
 
 def pubdump(pmids,**kwargs) : 
-    from engarde import pubdump
+    from lib.engarde import pubdump
     pubdump(pmids,**kwargs) ; 
 
 # RESUME : update dict to map terminal entries
