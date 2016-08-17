@@ -57,6 +57,7 @@ r'ruvbl.*',\
 
 highly_variable={\
 r'HIST.*',\
+r'AKR.*',\
 r'CSNK.*',\
 }
 
