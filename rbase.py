@@ -634,7 +634,7 @@ def hmconvert(eids,direction='m2h') :
         for tes in tup_eid_sym : 
             if tes[1].lower() == fromsym.lower() : 
                 sys.stderr.write('WARNING : Cheaty conversion of {}:{} to {}:{}.\n'\
-                    .format(eid,hmg['EID'][eid]['Symbol'],tes[0],tes[0]) )
+                    .format(eid,hmg['EID'][eid]['Symbol'],tes[0],tes[1]) )
                 return tes[0] ;
         else :
             if len(tup_eid_sym) > 1 : 
