@@ -623,7 +623,7 @@ def hmconvert(eids,direction='m2h') :
             fromsym     = hmg['EID'][eid]['Symbol']
         except KeyError : 
             sys.stderr.write('WARNING : Source Entrez ID {} not recognized.\n'.format(e))
-            return
+            return '00'
 
         tup_eid_sym =[ (e,hmg['EID'][e]['Symbol']) for e in converter.get(eid,{}) ]
         if len(tup_eid_sym) == 1 : 
