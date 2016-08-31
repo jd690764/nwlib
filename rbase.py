@@ -604,3 +604,47 @@ def eidLen( eid, gends=hsg,pepds=hsp, suppress = True ) :
             return PSEUDO_LENGTH
 
     return PSEUDO_LENGTH
+
+def hmconvert(eids,direction='m2h') :
+
+    load('hmg')
+
+    if direction == 'm2h' : 
+        load('m2h')
+        converter=m2h
+
+    elif direction == 'h2m' :
+        load('h2m')
+        converter=h2m
+
+    def do_conversion(eid,converter) :
+
+        try : 
+            fromsym     = hmg['EID'][eid]['Symbol']
+        except KeyError : 
+            sys.stderr.write('WARNING : Source Entrez ID {} not recognized.\n'.format(e))
+            return
+
+        tup_eid_sym =[ (e,hmg['EID'][e]['Symbol']) for e in converter.get(eid,{}) ]
+        if len(tup_eid_sym) == 1 : 
+            return tup_eid_sym[0][0] ;
+
+        for tes in tup_eid_sym : 
+            if tes[1].lower() == fromsym.lower() : 
+                sys.stderr.write('WARNING : Cheaty conversion of {}:{} to {}:{}.\n'\
+                    .format(eid,hmg['EID'][e]['Symbol'],tes[0][0],tes[0][1]) )
+                return tes[0] ;
+        else :
+            if len(tup_eid_sym) > 1 : 
+                sys.stderr.write('WARNING : Ambiguous conversion of {}:{} to {}:{}.\n'\
+                    .format(eid,hmg['EID'][eid]['Symbol'],tup_eid_sym[0][0],tup_eid_sym[0][1]) )
+            return tup_eid_sym[0][0] ;
+
+        
+
+    if type(eids) not in {str,int} : 
+        return [ do_conversion(str(eid),converter) for eid in eids ] ;
+    else : 
+        return do_conversion(str(eids),converter)
+
+
