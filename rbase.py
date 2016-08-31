@@ -625,14 +625,14 @@ def hmconvert(eids,direction='m2h') :
             sys.stderr.write('WARNING : Source Entrez ID {} not recognized.\n'.format(e))
             return '00'
 
-        tup_eid_sym =[ (e,hmg['EID'][e]['Symbol']) for e in converter.get(eid,{}) ]
+        tup_eid_sym =[ (e,hmg['EID'][eid]['Symbol']) for e in converter.get(eid,{}) ]
         if len(tup_eid_sym) == 1 : 
             return tup_eid_sym[0][0] ;
 
         for tes in tup_eid_sym : 
             if tes[1].lower() == fromsym.lower() : 
                 sys.stderr.write('WARNING : Cheaty conversion of {}:{} to {}:{}.\n'\
-                    .format(eid,hmg['EID'][e]['Symbol'],tes[0][0],tes[0][1]) )
+                    .format(eid,hmg['EID'][eid]['Symbol'],tes[0][0],tes[0][1]) )
                 return tes[0] ;
         else :
             if len(tup_eid_sym) > 1 : 
