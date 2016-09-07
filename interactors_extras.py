@@ -1270,9 +1270,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
 
     # if the reference file is just a list of .i files, create the pickled datafile
     if re.match( '.*\.txt$', fn ):
-        outf = re.sub( '\.txt', '\.cp2', fn )
-        createReferenceFile( fn, outf )
-        fn   = outf
+        fn = createReferenceFile( fn )
         
     if debug : 
         sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : fname is '+fn+'\n') ;
@@ -1425,60 +1423,69 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     else :
         return passed
 
-def createReferenceFile( inputFile, outputFile ):
+def createReferenceFile( inputFile, overWrite = False ):
 
-    alldatadict = dict()
-    with open( inputFile ) as f : 
-        for line in f : 
-            alldatadict.update( {line.strip():dict()} ) ;
+    if re.match( '.*cp2$', inputFile ):
+        outf        = inputFile
+    else :
+        outf        = re.sub( 'txt$', 'cp2', inputFile )
 
-    #    def mad(series) : 
-    #        return np.percentile(np.abs(series-np.percentile(series,50)),50) ; 
+    if not isfile( outf ) or overWrite :
+        
+        alldatadict = dict()
+    
+        with open( inputFile ) as f : 
+            for line in f : 
+                if re.match( '^#.*|^\s*$', line ):
+                    continue
+                alldatadict.update( {line.strip():dict()} ) ;
 
-    for fn in alldatadict.keys() :
-        f = open( cf.ifilesPath + fn ) 
-        f.readline()
-        for ll in mu.tabulate(f) : 
-            alldatadict[fn].update({ ll[2] : np.float(ll[3]) })
-        f.close() ;
+        for fn in alldatadict.keys() :
+            f = open( cf.ifilesPath + fn ) 
+            f.readline()
+            for ll in mu.tabulate(f) : 
+                alldatadict[fn].update({ ll[2] : np.float(ll[3]) })
+            f.close() ;
 
-    pseudodict     = { k : alldatadict[k]['PSEUDO'] for k in alldatadict }
-    pskeys         = list(pseudodict.keys())
-    pslogvals      = np.log10(list(pseudodict.values()))
-    pslogmad       = mad(pslogvals) ; 
-    pslogmedian    = np.percentile(pslogvals,50)
-    pslvps_hi      = 1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
-    #pslvps_lo=1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
+        pseudodict     = { k : alldatadict[k]['PSEUDO'] for k in alldatadict }
+        pskeys         = list(pseudodict.keys())
+        pslogvals      = np.log10(list(pseudodict.values()))
+        pslogmad       = mad(pslogvals) ; 
+        pslogmedian    = np.percentile(pslogvals,50)
+        pslvps_hi      = 1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
+        #pslvps_lo=1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
 
-    rejected_ds_hi = multipletests(pslvps_hi,alpha=0.05)[0]
-    #rejected_ds_lo=multipletests(pslvps_lo,alpha=0.05)[0]
+        rejected_ds_hi = multipletests(pslvps_hi,alpha=0.05)[0]
+        #rejected_ds_lo=multipletests(pslvps_lo,alpha=0.05)[0]
 
-    allfns         = list()
-    allsyms        = set()
-    for i in range(len(rejected_ds_hi)) : 
-        if rejected_ds_hi[i] : 
-            sys.stderr.write('WARNING: '+pskeys[i]+' is a pseudocount outlier '+\
-                             'and as such will NOT be incorporated\n')
-        else : 
-            allfns.append(pskeys[i]) ; 
-            allsyms |= set(alldatadict[pskeys[i]].keys())
+        allfns         = list()
+        allsyms        = set()
+        for i in range(len(rejected_ds_hi)) : 
+            if rejected_ds_hi[i] : 
+                sys.stderr.write('WARNING: '+pskeys[i]+' is a pseudocount outlier '+\
+                                 'and as such will NOT be incorporated\n')
+            else : 
+                allfns.append(pskeys[i]) ; 
+                allsyms |= set(alldatadict[pskeys[i]].keys())
 
-    allsyms        = list(allsyms) ; 
+        allsyms        = list(allsyms) ; 
 
-    # creation of the all-symbols all-fns grid
-    #allsyms=list({ k for fn in alldatadict.keys() for k in alldatadict[fn].keys() })
-    #allfns=list(alldatadict.keys())
+        # creation of the all-symbols all-fns grid
+        #allsyms=list({ k for fn in alldatadict.keys() for k in alldatadict[fn].keys() })
+        #allfns=list(alldatadict.keys())
 
-    grid           = np.zeros((len(allsyms),len(allfns)))
+        grid           = np.zeros((len(allsyms),len(allfns)))
 
-    for i in range(len(allsyms)) : 
-        for j in range(len(allfns)) : 
-            grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
+        for i in range(len(allsyms)) : 
+            for j in range(len(allfns)) : 
+                grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
 
-    loggrid        = np.log10(grid) ;
-    logmads        = np.fromiter( ( mad(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
-    logmeans       = np.fromiter( ( np.mean(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
-    logmedians     = np.fromiter( ( np.percentile(loggrid[i,:],50) for i in range(len(allsyms)) ),dtype=np.float) ; 
+        loggrid        = np.log10(grid) ;
+        logmads        = np.fromiter( ( mad(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
+        logmeans       = np.fromiter( ( np.mean(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
+        logmedians     = np.fromiter( ( np.percentile(loggrid[i,:],50) for i in range(len(allsyms)) ),dtype=np.float) ; 
 
-    with open( outputFile,'wb') as f : 
-        pickle.dump( (allsyms, allfns, loggrid), f ) ; 
+        with open( outf,'wb') as f : 
+            pickle.dump( (allsyms, allfns, loggrid), f ) ; 
+
+    return( outf )
