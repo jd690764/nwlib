@@ -49,13 +49,18 @@ def readYAMLfile( yamlfile, c ) :
 
     c['ds_dicts']     = yout['datasets']
 
+    refFiles          = dict()
     for dsd in c['ds_dicts'] : 
         lost_files    = 0
         if not os.path.isfile('./'+dsd['infilename']) and \
            not os.path.isfile(c['ifiles']+dsd['infilename']) : 
             print('File '+dsd['infilename']+' not found.')
             lost_files += 1
-
+        if dsd['control'] not in refFiles:
+            pFile     = ie.createReferenceFile( dsd['control'], overWrite = False)
+            refFiles[dsd['control']] = pFile
+            dsd['control']           = pFile
+                                                 
     if lost_files > 0 : 
         raise IOError
 
@@ -186,7 +191,7 @@ def readPublicDatasets( nwdata, c ):
         temporaryds.save( sio, edges = { e for e in temporaryds.edges.values() 
                                          if e.weight >= pd.get('minweight',0) and e.totalscore >= pd.get('minscore',0) });
         sio.seek(0)
-        print( 'reloading public dataset' + pd['infilename'])
+        print( 'imiport public data into network ' )
         nwdata.load_from( sio )
         sio.close()
         pdsf.close()
@@ -253,21 +258,21 @@ def secondaryFiltration( nwdata, c ):
     nodes_pass2    = set()    
 
     # vet every node in the network
-    for nk in c['node_pass1_all'] : 
-
+    for nk in c['node_pass1_all'] :
         if nk in c['node_pass1_strong'] :
             # keep node if it passed strong filter
             nodes_pass2.add(nk)
-        elif nk in c['node_pass1_all'] and b4us(nk) in rescued or afterus(nk) in rescued :
-            # rationale for this filter:
+        elif b4us(nk) in rescued or afterus(nk) in rescued :
+            # keep the node if it is on the rescue list:
             nodes_pass2.add(nk)
             nnodes_rescued  += 1
-        elif any([ nwdata.nodes[nk].binds(bk,within_edge_set = c['reinforcing_edges']) and \
+        elif any([ nwdata.nodes[nk].binds( bk, within_edge_set = c['reinforcing_edges']) and \
                    nwdata.nodes[nk].binds( bk, within_edge_set = c['zfhits_joint'] ) 
                    for bk in c['baitkeys'] ]) : 
             # if the node binds a bait (bk) with both a publicly recognized edge and
             # an observed weak edge, make sure that node stays
             nodes_pass2.add(nk)
+            nnodes_rescued  += 1            
         elif not c['nwd'] :
             # rationale for this filter:
             edges_this_node = { e.key for es in nwdata.nodes[nk].edges.values() for e in es }\
@@ -283,11 +288,13 @@ def secondaryFiltration( nwdata, c ):
 
                 if len(partners_this_node) >= c['rescue_deg'] : 
                     nodes_pass2.add(nk)
+                    nnodes_rescued  += 1                                
                     break
 
-        elif c['nwd'] and nk in c['node_pass1_all'] and nwdata.nodes[nk].nneighbors(within_edge_set = vqe) >= c['rescue_deg'] :
+        elif c['nwd'] and nwdata.nodes[nk].neighbors(within_edge_set = vqe) >= c['rescue_deg'] :
             # rationale for this filter:
             nodes_pass2.add(nk)
+            nnodes_rescued  += 1            
 
     edges_pass2 = set()            
     for bk in c['baitkeys'] : 
