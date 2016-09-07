@@ -61,7 +61,11 @@ mmgREF = dict()
 hspREF = dict()
 mmpREF = dict()
 
+gREF   = dict()
+pREF   = dict()
+
 def make_gene_reference( org ):
+
     genes = Entrez.objects.filter( taxid = org ).values( 'eid', 'symbol', 'peptide', 'synonym', 'taxid', 'swissprot', 'trembl')
     ref   = { x['eid']: x for x in genes }
     REF   = { 'eid' : ref }
@@ -85,31 +89,43 @@ def make_gene_reference( org ):
             
     if org == orgs['hs']:
         global hsgREF
-        hsgREF = REF
+        hsgREF      = REF
+
     elif org == orgs['mm']:
         global mmgREF
-        mmgREF = REF
+        mmgREF      = REF
+
+    return REF
+
         
 def make_protein_reference( org ):
-    prot   = Ncbiprot.objects.all().values( 'gi', 'acc', 'eid', 'protname', 'len', 'symbol', 'taxid' ) 
-    if org == orgs[ 'hs' ]:
-        hspREF = { x['acc']: x for x in prot if x['taxid'] == org }
-    else:
-        mmpREF = { x['acc']: x for x in prot if x['taxid'] == org }
 
-for org in orgs.values():
-    make_gene_reference( org )
-    make_protein_reference( org )
+    prot   = Ncbiprot.objects.all().values( 'gi', 'acc', 'eid', 'protname', 'len', 'symbol', 'taxid' )
+    if org == orgs[ 'hs' ]:
+        global hspREF
+        hspREF = { x['acc']: x for x in prot if x['taxid'] == org }
+        return hspREF
+    else:
+        global mmpREF
+        mmpREF = { x['acc']: x for x in prot if x['taxid'] == org }
+        return mmpREF
         
+        
+for org in orgs.values():
+    gREF[org] = make_gene_reference( org )
+    pREF[org] = make_protein_reference( org )
+    
+
 mm2hs = '' #rbase.m2h 
 hs2mm = '' #rbase.h2m
 
-#for k in hsgREF.keys():
+#for k in hspREF:
 #    print( k )
-#    for kk in hsgREF[k]:
-#        print( hsgREF[k][kk])
+#    for kk in hspREF[k]:
+#        print( kk )
+#        print( hspREF[k][kk])
 #        break
-    
+
 exores  = [ r'HRNR.*',r'KRT[0-9]+.*',r'KER.*',r'col[0-9]+[AB][0-9]+',r'DCD', r'DSP',r'FLG',r'IG[GLK]',r'CONTAM',r'GFP' ] 
 exo     = [re.compile(x,re.IGNORECASE) for x in exores]
 idrevs  = re.compile(r".*>rev.*|.*>r-.*",re.IGNORECASE)
@@ -485,9 +501,10 @@ class MSdata(object) :
         # making sure that d.official does not match any item in exogenous
         # the 'p' function gets the correct 'property' of that line
         eidlens = dict() 
-        bw=0.0
-        for d in self.fwdata : 
-            eidlens.update({ d : eidLen( d.entrez )})
+        bw      = 0.0
+        for d in self.fwdata :
+
+            eidlens.update({ d : eidLen( d.entrez, d.organism )})
             if notNone([ r.match(d.official) for r in exo ]) :
                 pass 
             elif d is self.bait : 
@@ -499,31 +516,29 @@ class MSdata(object) :
 
         for d in self.fwdata : 
                         
-                for d in self.fwdata : 
+            counts_this_gene = 0.0 
 
-                    counts_this_gene = 0.0 
+            # dealing with background -- either single background count is exceeded
+            # or peptide count decreased
+            if self.background and self.background.get(d.official) : 
 
-                    # dealing with background -- either single background count is exceeded
-                    # or peptide count decreased
-                    if self.background and self.background.get(d.official) : 
+                background_exceeded=False 
+                previous_fc=1000.0
 
-                        background_exceeded=False 
-                        previous_fc=1000.0
+                for fc in d.fxncounts : 
 
-                        for fc in d.fxncounts : 
-
-                            if background_exceeded or fc > self.background.get(d.official) \
-                                or fc > previous_fc :
-                                counts_this_gene += fc 
-                                background_exceeded =   True
-                            else : 
-                                previous_fc = fc
-
+                    if background_exceeded or fc > self.background.get(d.official) \
+                       or fc > previous_fc :
+                        counts_this_gene += fc 
+                        background_exceeded =   True
                     else : 
-                        counts_this_gene = p(d) 
+                        previous_fc = fc
 
-                    uselen = eidlens.get(d,PSEUDO_LENGTH) 
-                    d.setScore(counts_this_gene / bw / uselen) 
+            else : 
+                counts_this_gene = p(d) 
+
+            uselen = eidlens.get(d,PSEUDO_LENGTH) 
+            d.setScore(counts_this_gene / bw / uselen) 
 
 
     def syncToEntrez( self, tryhard = True, debug = False, bestpepdb = 'RPHs', reference = hsgREF ) :
@@ -535,7 +550,6 @@ class MSdata(object) :
         w  = 0
         W  = len(self.fwdata)
         for d in self.fwdata : 
-            print( len( reference['eid'] ))
             ( entrez, sym, org ) = desc_interpreter( d.desc, tryhard = tryhard, debug = debug,
                                                      bestpepdb = bestpepdb, reference = reference )
 
@@ -664,7 +678,7 @@ class MSdata(object) :
                     worg=d.organism 
                     weid=d.entrez 
 
-            notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid ))+'_raw_'+repr(d.totalcounts) 
+            notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid, worg ))+'_raw_'+repr(d.totalcounts) 
 
             outfile.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(\
              self.name+'_'+str(d.idn),baitSym,woff,d.score,baitOrg,worg,baitEnt,weid,self.name,\
@@ -903,7 +917,6 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
                 pass 
 
         else:
-#            print('from here')
             (entrez,sym,org) = refertouser(desc)
 #            if mt and mt.group(1) and entrez != '00' and org != '00'  : 
 #                rb.dup.update({ desc : (entrez,sym,org) }) 
@@ -916,7 +929,6 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             entrez        = reference['peptide'][pepacc]['EID'] 
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
-#            print('from here1')
             (entrez,sym,org) = refertouser(desc)
             rb.dup.update({ desc : (entrez,sym,org) }) 
     elif tryhard and mt : 
@@ -927,7 +939,6 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             entrez        = reference['peptide'][pepacc]['EID'] 
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
-#            print('from here2')
             (entrez,sym,org) = refertouser(desc)
             rb.dup.update({ desc : (entrez,sym,org) }) 
     elif tryhard and mp : 
@@ -952,12 +963,10 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         except (KeyError,ValueError,IOError) : 
             pass 
     else :
-#        print('from here3')        
         (entrez,sym,org) = refertouser(desc)
         #rbase.dup.update({ desc : (entrez,sym,org) }) 
         
     if not sym or not entrez or not org :
-#        print('from here4')
         (entrez,sym,org) = refertouser(desc)
 
     # an initial if/return shoud have caught cases where 'desc' is already in rbase.dup
@@ -967,30 +976,28 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
     return (entrez,sym,org)
 
+def save_dup() :
+    rb.update_dup( rb.dup )
 
 
-def eidLen( eid, suppress = True ) : 
+def eidLen( eid, org, suppress = True ) : 
 
-    try : 
-        possPeps = hsgREF[eid]['peptide']
-    except (TypeError,KeyError) : 
-        return 375.0 
+    org = int(org)
+    eid = int(eid) # some eids are '00' !
+    
+    if eid > 0 and eid in gREF[ org ]['eid']:
 
-    taxon = hsgREF['eid'][eid]['taxid']
-    pepds = hspREF if taxon == '9606' else mPEP
+        possPeps = gREF[ org ][ 'eid' ][ eid ]['peptide'].split(";")
+        isnp     = lambda acc : 'NP_' in acc and acc in pREF[org]
+        isxp     = lambda acc : 'XP_' in acc and acc in pREF[org]
 
-    isnp  = lambda acc : 'NP_' in acc and acc in pepds.keys() 
-    isxp  = lambda acc : 'XP_' in acc and acc in pepds.keys() 
-
-    for pep in possPeps : 
-
-        if   any([ isnp(x) for x in possPeps ]) : 
-            return np.mean([ pepds[x]['length'] for x in possPeps if isnp(x) ])
+        if   any([ isnp(x) for x in possPeps ]) :
+            return float("{0:.1f}".format(np.mean([ pREF[org][x]['len'] for x in possPeps if isnp(x) ])))
         elif any([ isxp(x) for x in possPeps ]) :
-            return np.mean([ pepds[x]['length'] for x in possPeps if isxp(x) ])
-        else : 
-            if not suppress : 
-                sys.stderr.write('NOTE: No satisfactory peptide accessions for eid {}, using average length of 375.\n'.format(eid)) 
-            return PSEUDO_LENGTH
+            return float("{0:.1f}".format(np.mean([ pREF[org][x]['len'] for x in possPeps if isxp(x) ])))
+
+
+    if not suppress : 
+        sys.stderr.write('NOTE: No satisfactory peptide accessions for eid {}, using average length of 375.\n'.format(eid)) 
 
     return PSEUDO_LENGTH
