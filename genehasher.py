@@ -5,7 +5,6 @@ from os.path import isfile
 import urllib.request, urllib.error, urllib.parse
 import io 
 import gzip
-import pprint
 import re
 
 from lib import markutils as mu
@@ -400,7 +399,7 @@ def xml2bin( infilename, outfilename, type='pickle', insist_on_living=True)  :
         outfile = open(outfilename,'ab') ;
     elif type == 'tsv':
         outfile = open( outfilename, 'at' )
-    pp = pprint.PrettyPrinter(indent=4)
+
         #tree=etree.parse(xf) ; 
     #root=tree.getroot() ;
     count = 0
@@ -522,11 +521,15 @@ def xml2bin( infilename, outfilename, type='pickle', insist_on_living=True)  :
         except KeyEror :
             newGene.update({ 'mRNA' : None }) ;
 
-
         try : 
             newGene.update({ 'Summary' : eseek(element,'Entrezgene_summary').text })
         except KeyError : 
             newGene.update({ 'Summary' : None }) ;
+
+        try :
+            newGene.update({ 'Desc' : eseek(element[3][0],'Gene-ref_desc').text })
+        except KeyError : 
+            newGene.update({ 'Desc' : None }) ;
 
         ### NEW AND EXTREMELY BOSS : CDD DOMAINS !!!!1111ONE!!
         try : 
@@ -567,7 +570,7 @@ def xml2bin( infilename, outfilename, type='pickle', insist_on_living=True)  :
                 counter = counter + 1
             line = re.sub( r'\n', '', line ) 
             outfile.write( line + "\n" )
-
+            
         outfile.flush() ; 
 
     outfile.close() ; 
