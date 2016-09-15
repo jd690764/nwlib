@@ -301,6 +301,7 @@ r'ruvbl.*',\
 highly_variable={\
 r'HIST.*',\
 r'CSNK.*',\
+r'HB[ABGDEZQM][0-9]*',\
 }
 
 pseudogenes={\
@@ -423,11 +424,12 @@ def list_domains(rdict,key,outfields=('Pssm','Name'),root_families=True) :
             sys.stdout.write('\t'.join([cdd['ByPssm'][c][of] for of in outfields])) ; 
             sys.stdout.write('\n') ; 
 
-def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol'])) : 
+def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),write=False,symbols=True) : 
     
     load('cdd') ; 
 
     global VALID_CDDS ;
+    outset=set()
 
     if not VALID_CDDS : 
         VALID_CDDS=set(cdd['ByPssm'].keys()) ; 
@@ -439,14 +441,31 @@ def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']))
         for e in rdict['EID'] : 
             if rdict['EID'][e]['CDD'] is not None and \
              any([ cdd['ByPssm'][c]['Root']['Pssm'] in pssm for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
-                sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
-                sys.stdout.write('\n') ; 
+                if write : 
+                    sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
+                    sys.stdout.write('\n') ; 
+                else : 
+                    if symbols : 
+                        outset.add( rdict['EID'][e]['Symbol'] )
+                    else : 
+                        outset.add( e )
     else :
         for e in rdict['EID'] : 
             if rdict['EID'][e]['CDD'] is not None and \
              any([ cdd['ByPssm'][c]['Pssm'] in pssm for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
-                sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
-                sys.stdout.write('\n') ; 
+                if write : 
+                    sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
+                    sys.stdout.write('\n') ; 
+                else : 
+                    if symbols : 
+                        outset.add( rdict['EID'][e]['Symbol'] )
+                    else : 
+                        outset.add( e )
+
+    if not write : 
+        return outset
+                    
+
 def paperlimit(rdict,limit) : 
 
     papercounts=dict() ;
@@ -524,7 +543,7 @@ def domroots(domlist) :
 quicksearch=lambda x : rapid(hsg,outfields=('Symbol','Summary')) ; 
 def pmid_pairs(id1,id2,ref=hsg) :
 
-    from engarde import BIG_SCREENS
+    from lib.engarde import BIG_SCREENS
     id1type='s' ; 
     id2type='s' ; 
     try :
@@ -552,7 +571,7 @@ def pmid_pairs(id1,id2,ref=hsg) :
     return pmids1  & pmids2 - E.BIG_SCREENS
 
 def pubdump(pmids,**kwargs) : 
-    from engarde import pubdump
+    from lib.engarde import pubdump
     pubdump(pmids,**kwargs) ; 
 
 # RESUME : update dict to map terminal entries
@@ -585,3 +604,49 @@ def eidLen( eid, gends=hsg,pepds=hsp, suppress = True ) :
             return PSEUDO_LENGTH
 
     return PSEUDO_LENGTH
+
+def hmconvert(eids,direction='m2h') :
+
+    load('hmg')
+
+    if direction == 'm2h' : 
+        load('m2h')
+        converter=m2h
+
+    elif direction == 'h2m' :
+        load('h2m')
+        converter=h2m
+
+    def do_conversion(eid,converter) :
+
+        try : 
+            fromsym     = hmg['EID'][eid]['Symbol']
+        except KeyError : 
+            sys.stderr.write('WARNING : Source Entrez ID {} not recognized.\n'.format(eid))
+            return '00'
+
+        tup_eid_sym =[ (e,hmg['EID'][eid]['Symbol']) for e in converter.get(eid,{}) ]
+        if len(tup_eid_sym) == 1 : 
+            return tup_eid_sym[0][0] ;
+        elif not tup_eid_sym : 
+            return '00'
+
+        for tes in tup_eid_sym : 
+            if tes[1].lower() == fromsym.lower() : 
+                sys.stderr.write('WARNING : Cheaty conversion of {}:{} to {}:{}.\n'\
+                    .format(eid,hmg['EID'][eid]['Symbol'],tes[0],tes[1]) )
+                return tes[0] ;
+        else :
+            if len(tup_eid_sym) > 1 : 
+                sys.stderr.write('WARNING : Ambiguous conversion of {}:{} to {}:{}.\n'\
+                    .format(eid,hmg['EID'][eid]['Symbol'],tup_eid_sym[0][0],tup_eid_sym[0][1]) )
+            return tup_eid_sym[0][0] ;
+
+        
+
+    if type(eids) not in {str,int} : 
+        return [ do_conversion(str(eid),converter) for eid in eids ] ;
+    else : 
+        return do_conversion(str(eids),converter)
+
+
