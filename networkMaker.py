@@ -197,7 +197,7 @@ def readPublicDatasets( nwdata, c ):
         temporaryds.save( sio, edges = { e for e in temporaryds.edges.values() 
                                          if e.weight >= pd.get('minweight',0) and e.totalscore >= pd.get('minscore',0) });
         sio.seek(0)
-        print( 'imiport public data into network ' )
+        print( 'import public data into network ' )
         nwdata.load_from( sio )
         sio.close()
         pdsf.close()
