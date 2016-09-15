@@ -1,7 +1,6 @@
 #!/usr/env/python -c
 import argparse
 import sys
-sys.path.append('/usr/local/share/py/djscripts') ;
 import os
 from os import listdir
 from io import StringIO
