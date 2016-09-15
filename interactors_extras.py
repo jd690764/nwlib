@@ -1272,14 +1272,15 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     if re.match( '.*\.txt$', fn ):
         fn = createReferenceFile( fn )
         
-    if debug : 
-        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : fname is '+fn+'\n') ;
+    if debug :
+        sys.stderr.write( 'DEBUG> interactors_extras.madfilter_corr : \n    baitkey=' + baitkey + '\n    qual=' + qual + '\n' )
+        sys.stderr.write( 'DEBUG> interactors_extras.madfilter_corr : control fname is ' + fn + '\n' )
 
     with open(fn,'rb') as f : 
         ( allsyms, allfns, loggrid ) = pickle.load(f) ;
 
     if debug :
-        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr :\n'+
+        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : control\n'+
                          '        syms: '+str(len(allsyms))+' files: '+str(len(allfns))+'\n') ;
 
     symset      = set(allsyms) ; 
@@ -1379,7 +1380,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
             p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
             if debug : 
                 sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key +
-                                 ' given score '+'{:8.6}'.format(madscore)+'; p05_cutoff(nsaf) =' +
+                                 ' given score '+'{:8.6}'.format(madscore)+'; nsaf vs. p05_cut =' +
                                  '{:8.6}'.format(ek_ms[ek]) + ' vs. {:8.6}'.format(p05_cut) + '  \n')
 
         maddict.update({ e.key : madscore }) ;
