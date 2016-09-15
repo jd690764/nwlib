@@ -1,12 +1,14 @@
 #!/usr/env/python -c
 import argparse
 import sys
+sys.path.append('/usr/local/share/py/djscripts') ;
 import os
 from os import listdir
 from io import StringIO
 import colorama
 import numpy as np
 import yaml
+import re
 from lib import interactors as I
 from lib import interactors_extras as ie
 from lib import rbase
@@ -25,11 +27,15 @@ def tokey(c, s) :
     if c['organism'] == 'human':
         if s in rbase.hmg['Symbol'] : 
             return s+'_'+rbase.hmg['Symbol'][s]['EID']
+        elif re.search( '^[a-zA-Z0-9]+_\d+$', s ):
+            return s
         else : 
             return s+'_00' ;
     elif c['organism'] == 'mouse':
         if s in rbase.mmg['Symbol'] : 
             return s+'_'+rbase.mmg['Symbol'][s]['EID']
+        elif re.search( '^[a-zA-Z0-9]+_\d+$', s ):
+            return s
         else : 
             return s+'_00' ;
 
@@ -291,7 +297,7 @@ def secondaryFiltration( nwdata, c ):
                     nnodes_rescued  += 1                                
                     break
 
-        elif c['nwd'] and nwdata.nodes[nk].neighbors(within_edge_set = vqe) >= c['rescue_deg'] :
+        elif c['nwd'] and nwdata.nodes[nk].nneighbors(within_edge_set = vqe) >= c['rescue_deg'] :
             # rationale for this filter:
             nodes_pass2.add(nk)
             nnodes_rescued  += 1            
