@@ -503,7 +503,6 @@ class MSdata(object) :
         eidlens = dict() 
         bw      = 0.0
         for d in self.fwdata :
-
             eidlens.update({ d : eidLen( d.entrez, d.organism )})
             if notNone([ r.match(d.official) for r in exo ]) :
                 pass 
@@ -547,12 +546,12 @@ class MSdata(object) :
 
         if bestpepdb == 'RPMm':
             reference = mmgREF
-        w  = 0
+        w  = 1
         W  = len(self.fwdata)
         for d in self.fwdata : 
             ( entrez, sym, org ) = desc_interpreter( d.desc, tryhard = tryhard, debug = debug,
                                                      bestpepdb = bestpepdb, reference = reference )
-
+            w = w + 1
             d.setOfficial( sym )
             d.setEntrez( entrez )    
             d.setOrganism( org )
@@ -930,7 +929,8 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
-            rb.dup.update({ desc : (entrez,sym,org) }) 
+            rb.dup.update({ desc : (entrez,sym,org) })
+            save_dup()            
     elif tryhard and mt : 
         try : 
             swacc,seq     = E.fetchSw(mt.group(1),asTuple=True) 
@@ -940,11 +940,12 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
-            rb.dup.update({ desc : (entrez,sym,org) }) 
+            rb.dup.update({ desc : (entrez,sym,org) })
+            save_dup()
     elif tryhard and mp : 
         try :
             rec=E.fetchPR(mp.group(1))
-            if E.PRgetEID(rec) not in reference['eid'].keys() : 
+            if int(E.PRgetEID(rec)) not in reference['eid'].keys() : 
                 if debug :
                     sys.stderr.write("DEBUG:   remotely matched description :\n    {}\n"\
                      .format(desc) +\
@@ -985,7 +986,7 @@ def eidLen( eid, org, suppress = True ) :
     org = int(org)
     eid = int(eid) # some eids are '00' !
     
-    if eid > 0 and eid in gREF[ org ]['eid']:
+    if org in gREF and eid > 0 and eid in gREF[ org ]['eid'] :
 
         possPeps = gREF[ org ][ 'eid' ][ eid ]['peptide'].split(";")
         isnp     = lambda acc : 'NP_' in acc and acc in pREF[org]
