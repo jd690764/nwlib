@@ -53,7 +53,7 @@ keyer=lambda x : x.offical + '_' + x.entrez ;
 FORCE_MATCH_QUAL=True
 # I'm not sure why I would ever want this to be false tbh.
 
-debugout=open('tmp/interactors_dbg_log.txt','w') ; 
+#debugout=open('tmp/interactors_dbg_log.txt','w') ; 
 
 def ee(ek1,ek2) : 
     """
@@ -624,7 +624,7 @@ class dataSet(object):
                 return False 
             else:
                 if self.debug : 
-                    debugout.write( "DEBUG:   Creating node {}.\n".format( node.key ))
+                    sys.stderr.write( "DEBUG:   Creating node {}.\n".format( node.key ))
                 self.nodes.update( { node.key : node } )
                 
         return True
@@ -641,7 +641,8 @@ class dataSet(object):
 
         if self.i_filter and not ( self.i_filter and self.i_filter.test( iaction )):
             if self.debug:
-                debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
+                #debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
+                sys.stderr.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
             return False
         else:
             if not iaction.interID in self.the_data.keys():
@@ -650,7 +651,7 @@ class dataSet(object):
                 # if the interaction belongs to a previously uncharacterized edge
                 if iaction.edgekey() not in self.edges and ei( iaction.edgekey()) not in self.edges : 
                     if self.debug:
-                        debugout.write("DEBUG: New edge created for interaction {}.\n".format( iaction.interID))
+                        sys.stderr.write("DEBUG: New edge created for interaction {}.\n".format( iaction.interID))
                     # create the edge
                     newedge = bgedge( interaction = iaction,
                                       directed    = iaction.directed,
