@@ -559,14 +559,14 @@ def pmid_pairs(id1,id2,ref=hsg) :
         pass ; 
 
     if id1type == 's' :   
-        pmids1=rbase.hsg['Symbol'][s]['Pubmed'] ; 
+        pmids1=ref['Symbol'][s]['Pubmed'] ; 
     else : 
-        pmids1=rbase.hsg['EID'][e]['Pubmed'] ; 
+        pmids1=ref['EID'][e]['Pubmed'] ; 
 
     if id2type == 's' :    
-        pmids2=rbase.hsg['Symbol'][s]['Pubmed'] ; 
+        pmids2=ref['Symbol'][s]['Pubmed'] ; 
     else : 
-        pmids2=rbase.hsg['EID'][e]['Pubmed'] ; 
+        pmids2=ref['EID'][e]['Pubmed'] ; 
 
     return pmids1  & pmids2 - E.BIG_SCREENS
 
