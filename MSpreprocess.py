@@ -16,22 +16,25 @@ import lib.rbase as rb
 
 from network.models import Entrez, Ncbiprot
 
+rb.load('dup')
+
+PSEUDO_LENGTH = 375.0
+orgs          = { 'hs': 9606, 'mm': 10090 }
+
 tremblre      = re.compile(r'.*tr\|([^\|]{6})\|.*') 
 swisspre      = re.compile(r'.*sp\|([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})\|.*', re.IGNORECASE ) 
 entrezre      = re.compile(r'.*ref\|([\d]+)\|.*') 
 symbolre      = re.compile(r'.*GN=([A-Za-z0-9]*).*') 
 proteinre     = re.compile(r'.*ref\|([ANYXZ]P_\d+)\.?\d{0,2}\|.*') 
-PSEUDO_LENGTH = 375.0
-orgs          = { 'hs': 9606, 'mm': 10090 }
+idrevs        = re.compile(r".*>rev.*|.*>r-.*",re.IGNORECASE)
+getgn         = re.compile(r".* GN=([A-Za-z0-9_.-]*).*")
+getos         = re.compile(r".* OS=([A-Za-z0-9 ()-]*) ..=.*") 
+contam        = re.compile(r".*contam.*|.*>uc.*",re.IGNORECASE)
+wastrd        = re.compile(r".*truncate.*",re.IGNORECASE)
+spacc         = re.compile(r".*sp\|(.*)\|.*",re.IGNORECASE)
+entrezh       = re.compile(r'.*gi\|.*',re.IGNORECASE) 
 
-def eseek(element,childTag) : 
 
-    for c in list(element) : 
-        if c.tag == childTag : 
-            return c 
-    else : 
-        raise KeyError 
-#
 # IMPORTANT : What type of file should you run this on ? 
 #
 #
@@ -54,15 +57,16 @@ def eseek(element,childTag) :
 #       
 #       Last column-- total.
 
-rb.load('dup')
-
 hsgREF = dict()
 mmgREF = dict()
 hspREF = dict()
 mmpREF = dict()
-
 gREF   = dict()
 pREF   = dict()
+
+mm2hs = '' #rbase.m2h 
+hs2mm = '' #rbase.h2m
+
 
 def make_gene_reference( org ):
 
@@ -116,9 +120,6 @@ for org in orgs.values():
     pREF[org] = make_protein_reference( org )
     
 
-mm2hs = '' #rbase.m2h 
-hs2mm = '' #rbase.h2m
-
 #for k in hspREF:
 #    print( k )
 #    for kk in hspREF[k]:
@@ -126,15 +127,15 @@ hs2mm = '' #rbase.h2m
 #        print( hspREF[k][kk])
 #        break
 
-exores  = [ r'HRNR.*',r'KRT[0-9]+.*',r'KER.*',r'col[0-9]+[AB][0-9]+',r'DCD', r'DSP',r'FLG',r'IG[GLK]',r'CONTAM',r'GFP' ] 
-exo     = [re.compile(x,re.IGNORECASE) for x in exores]
-idrevs  = re.compile(r".*>rev.*|.*>r-.*",re.IGNORECASE)
-getgn   = re.compile(r".* GN=([A-Za-z0-9_.-]*).*")
-getos   = re.compile(r".* OS=([A-Za-z0-9 ()-]*) ..=.*") 
-contam  = re.compile(r".*contam.*|.*>uc.*",re.IGNORECASE)
-wastrd  = re.compile(r".*truncate.*",re.IGNORECASE)
-spacc   = re.compile(r".*sp\|(.*)\|.*",re.IGNORECASE)
-entrezh = re.compile(r'.*gi\|.*',re.IGNORECASE) 
+
+def eseek(element,childTag) : 
+
+    for c in list(element) : 
+        if c.tag == childTag : 
+            return c 
+    else : 
+        raise KeyError
+    
 
 class MSdatum(object) :
 
@@ -283,6 +284,9 @@ class MSdata(object) :
 
     def parseSUMS( self, infobj, unTruncate = True, sep = '\t' ) :
 
+        # column header for this type of file, e.g.:
+        # "Rank Number"	"Protein Name"	ZFP_1	ZFP_2	ZFP_3	ZFP_4	ZFP_5	ZFP_6	ZFP_7	ZFP_8	MAX	SUM
+        
         f            = infobj
         s            = f.readline().strip().split(sep) # moves past headers
         maxCtDatum   = None 
@@ -294,6 +298,7 @@ class MSdata(object) :
             linel    = line.strip().split(sep)
             thisdesc = linel[1]
 
+            # skip lines labeled contaminant
             if contam.match(thisdesc) :
                 continue
 
@@ -334,6 +339,7 @@ class MSdata(object) :
             else :
                 self.fwdata.append(newDatum)
 
+        # the row with max count is set to be the bait
         self.bait = maxCtDatum 
 
         f.close()
@@ -481,7 +487,7 @@ class MSdata(object) :
         self.fpd=stats.poisson(np.mean(inputs))
 
 
-    def score(self,scoreBy="total",norm2len=True) :
+    def score( self, scoreBy = "total", norm2len = True ) :
 
         if scoreBy in ( "max","Max","MAX" ) :
             p=lambda x : x.maxcount
@@ -505,8 +511,10 @@ class MSdata(object) :
         for d in self.fwdata :
             eidlens.update({ d : eidLen( d.entrez, d.organism )})
             if notNone([ r.match(d.official) for r in exo ]) :
+                print( 'skip contaminants: ' + d.official)
                 pass 
-            elif d is self.bait : 
+            elif d is self.bait :
+                print( 'skip bait: ' + d.official )
                 pass 
             else : 
                 bw += p(d)/eidlens[d]; 
@@ -704,6 +712,7 @@ class MSdata(object) :
 #wildly inefficent but occasionally necessary
 def seqRetter(descline) :
 
+    #only used for parseLane
     tremblre=re.compile(r'.*tr\|([^\|]*)\|.*') 
     swisspre=re.compile(r'.*sp\|([^\|]*)\|.*') 
 
@@ -930,7 +939,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
             rb.dup.update({ desc : (entrez,sym,org) })
-            save_dup()            
+            rb.update_dup( rb.dup )
     elif tryhard and mt : 
         try : 
             swacc,seq     = E.fetchSw(mt.group(1),asTuple=True) 
@@ -941,7 +950,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
             rb.dup.update({ desc : (entrez,sym,org) })
-            save_dup()
+            rb.update_dup( rb.dup )
     elif tryhard and mp : 
         try :
             rec=E.fetchPR(mp.group(1))
@@ -976,10 +985,6 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         #        rbase.dup.update({ desc : (entrez,sym,org) }) 
 
     return (entrez,sym,org)
-
-def save_dup() :
-    rb.update_dup( rb.dup )
-
 
 def eidLen( eid, org, suppress = True ) : 
 

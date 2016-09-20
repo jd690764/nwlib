@@ -28,9 +28,12 @@ r'DSC.*',\
 r'CRAP.*',\
 r'KRT.*',\
 r'CONTAM.*',\
+r'GFP',
 }
 
-endores={\
+exo     = [re.compile(x,re.IGNORECASE) for x in exores]
+
+endores ={\
 r"HSP.*",\
 r"UB[CQLB].*",\
 r"UBA52",\
@@ -59,6 +62,7 @@ highly_variable={\
 r'HIST.*',\
 r'AKR.*',\
 r'CSNK.*',\
+r'HB[ABGDEZQM][0-9]*',\                 
 }
 
 pseudogenes={\
@@ -183,7 +187,6 @@ def bg_regex_assembler(iorg="") :
         return( Filter(excludes=exi),Filter(excludes=exn)) ;
 
 def exogenous_regex_assembler(debug=False) : 
-    from lib.rbase import exores as exogenous_regexes
 
     exn=set() ; 
 
@@ -193,11 +196,10 @@ def exogenous_regex_assembler(debug=False) :
     return Filter(excludes=exn,debug=debug) ; 
 
 def exogenous_and_isoformtastic(debug=False) :
-    from lib.rbase import highly_variable as hv
-    from lib.rbase import exores 
+
     exn=set() ; 
 
-    for r in exogenous_regexes | hv : 
+    for r in exogenous_regexes | highly_variable : 
         exn.add(subfilter(r,"official")) ;
 
     return Filter(excludes=exn,debug=debug) ; 

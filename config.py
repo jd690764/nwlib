@@ -10,16 +10,20 @@ uniprotUrl      = 'http://www.uniprot.org/uniprot/'
 controlFiles    = '/mnt/reference/control_panels/'
 
 ifilesPath      = '/mnt/msrepo/ifiles/' 
-
+rawfilesPath    = '/srv/msrepo/rawfiles/'
+mrmsfilesPath   = '/srv/msrepo/mrmsfiles/'
 properNounsPath = '/home/mrkelly/Lab/errata/propers.txt'
-
+bgfileslPath    = '/srv/msrepo/background/'
 referencePath   = '/usr/local/share/py/djscripts/data/pickles/'
+
+bgerfilePath    = 'data/preprocess/backgrounder.tsv'
 
 publicDataPath  = '/mnt/reference/'
 biogridPath     = publicDataPath + 'biogrid_latest'
 #emiliomePath    = publicDataPath + 'complexes/emiliome.i'
 emiliomePath    = 'data/pickles/emiliome.i'
-emiliomeV2Path    = 'data/pickles/emiliomeV2.i'
+corumPath       = 'data/pickles/corum.i'
+emiliomeV2Path  = 'data/pickles/emiliomeV2.i'
 bioplexPath     = publicDataPath + 'bioplex.i'
 preppiPath      = publicDataPath + 'preppi_150727_lr600.i'
 domainPairsPath = publicDataPath + 'bioplex_predicted.tsv'

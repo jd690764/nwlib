@@ -3,8 +3,12 @@ import readline
 import colorama
 import sys
 import os
+from os.path import isfile
 
 from lib import config as cf
+from lib import interactors as I 
+from lib import filters as ftr
+
 
 def arm(loc) : 
     out=''
@@ -103,7 +107,6 @@ def refroots() :
 
 def load(db) : 
 
-    from os.path import isfile
     try : 
         if db not in ATTRDICT and isfile(db) : 
             fobj=open(db,'rb') ; 
@@ -215,22 +218,19 @@ def load_biogrid(filters='default',m2h=False,h2m=False,force_qualify=True,superd
 
     bgpath = cf.biogridPath 
 
-    from lib import interactors as I 
-    from lib import interactors_extras as ie
-
     mynf=None ; 
     myif=None ; 
-    (myif,mynf)=ie.bg_regex_assembler() ; 
+    (myif,mynf)=ftr.bg_regex_assembler() ; 
 
     if filters == 'default' : 
         pass ; 
     elif filters.lower() in 'exogenous' : 
-        mynf=ie.exogenous_regex_assembler() ; 
+        mynf=ftr.exogenous_regex_assembler() ; 
     elif filters.lower() in 'ionly' : 
         mynf=None ; 
     elif filters.lower() in 'physical' : 
-        physical_subf=ie.subfilter(r'genetic','systemType') ;
-        myif=ie.Filter(excludes={physical_subf,}) ; 
+        physical_subf=ftr.subfilter(r'genetic','systemType') ;
+        myif=ftr.Filter(excludes={physical_subf,}) ; 
         mynf=None ; 
     elif filters is None or filters.lower() in 'none' : 
         mynf=None ; 
@@ -243,73 +243,11 @@ def load_biogrid(filters='default',m2h=False,h2m=False,force_qualify=True,superd
 
 def load_preppi() : 
     global preppi ; 
-    from lib import interactors as I 
-    from lib import interactors_extras as ie
     preppipath = cf.preppiPath ; 
     preppi=I.dataSet() ; 
     preppi_f=open(preppipath) ;
     preppi.parse(preppi_f,fd=I.fdms) ; 
     preppi_f.close() ; 
-
-exores={\
-r"HRNR.*",\
-r"KRT[0-9]+.*",\
-r"Ker.*",\
-r"col[0-9]+[AB][0-9]+",\
-r'dcd.*',\
-r'dsp.*',\
-r'flg.*',\
-r'DSG.*',\
-r'JUP.*',\
-r'CSN2',\
-r'GFP.*',\
-r'HLA.*',\
-r'IG[HLEK].*',\
-r'ALB',\
-r'LYZ',\
-r'DSC.*',\
-r'CRAP.*',\
-r'KRT.*',\
-r'CONTAM.*',\
-}
-
-endores={\
-r"HSP.*",\
-r"UB[CQLB].*",\
-r"UBA52",\
-r"SUMO",\
-r"NPM.*",\
-r"SPT.N.*",\
-r"dnaj.*",\
-r'CAD.*',\
-r'RPS27A.*',\
-r'..RS',\
-r'BAG2',\
-r'E[EIT]F.*',\
-r'RP[SL].*',\
-} ;
- 
-cytores={\
-r"TUB[ABG].*",\
-r"ACT[ABG].*",\
-r"MY[OH].*",\
-r'FLN[ABC].*',\
-r'VIM.*',\
-r'ruvbl.*',\
-}
-
-highly_variable={\
-r'HIST.*',\
-r'CSNK.*',\
-r'HB[ABGDEZQM][0-9]*',\
-}
-
-pseudogenes={\
-r'LOC.*',\
-r'Gm[0-9]\+',\
-}
-
-exogenous_regexes=exores
 
 def firstnp(sym,ghash) : 
 
@@ -321,12 +259,7 @@ def firstnp(sym,ghash) :
     else : 
         return None ; 
 
-default_regexes= exores | endores | cytores | highly_variable ; 
-
 def load_refsuite(filters='default',m2h=False,h2m=False,superdebug=False,force=False) : 
-
-    from lib import interactors as I
-    from lib import interactors_extras as ie
 
     global refsuite ;
 
@@ -339,12 +272,12 @@ def load_refsuite(filters='default',m2h=False,h2m=False,superdebug=False,force=F
 
     mynf=None ; 
     myif=None ; 
-    (myif,mynf)=ie.bg_regex_assembler() ; 
+    (myif,mynf)=ftr.bg_regex_assembler() ; 
 
     if filters == 'default' : 
         pass ; 
     elif filters.lower() in 'exogenous' : 
-        mynf=ie.exogenous_regex_assembler() ; 
+        mynf=ftr.exogenous_regex_assembler() ; 
     elif filters.lower() in 'ionly' : 
         mynf=None ; 
     elif filters is None or filters.lower() in 'none' : 
@@ -575,35 +508,6 @@ def pubdump(pmids,**kwargs) :
     pubdump(pmids,**kwargs) ; 
 
 # RESUME : update dict to map terminal entries
-
-def eidLen( eid, gends=hsg,pepds=hsp, suppress = True ) : 
-
-    if not gends or not pepds : 
-        raise TypeError('Reference database not initialized') ;
-
-    try : 
-        possPeps = gends[eid]['peptide']
-    except (TypeError,KeyError) : 
-        return 375.0 
-
-    taxon = hmg['eid'][eid]['taxid']
-    pepds = hmg if taxon == '9606' else mPEP
-
-    isnp  = lambda acc : 'NP_' in acc and acc in pepds.keys() 
-    isxp  = lambda acc : 'XP_' in acc and acc in pepds.keys() 
-
-    for pep in possPeps : 
-
-        if   any([ isnp(x) for x in possPeps ]) : 
-            return np.mean([ pepds[x]['length'] for x in possPeps if isnp(x) ])
-        elif any([ isxp(x) for x in possPeps ]) :
-            return np.mean([ pepds[x]['length'] for x in possPeps if isxp(x) ])
-        else : 
-            if not suppress : 
-                sys.stderr.write('NOTE: No satisfactory peptide accessions for eid {}, using average length of 375.\n'.format(eid)) 
-            return PSEUDO_LENGTH
-
-    return PSEUDO_LENGTH
 
 def hmconvert(eids,direction='m2h') :
 
