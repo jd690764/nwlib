@@ -13,6 +13,7 @@ import lib.markutils as mu
 import lib.peputils as pep 
 import lib.engarde as E 
 import lib.rbase as rb
+import lib.filters as flt
 
 from network.models import Entrez, Ncbiprot
 
@@ -510,7 +511,7 @@ class MSdata(object) :
         bw      = 0.0
         for d in self.fwdata :
             eidlens.update({ d : eidLen( d.entrez, d.organism )})
-            if notNone([ r.match(d.official) for r in exo ]) :
+            if notNone([ r.match(d.official) for r in flt.exo ]) :
                 print( 'skip contaminants: ' + d.official)
                 pass 
             elif d is self.bait :
@@ -686,9 +687,9 @@ class MSdata(object) :
                     weid=d.entrez 
 
             notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid, worg ))+'_raw_'+repr(d.totalcounts) 
-
+            score      = "{0:.12f}".format(d.score)
             outfile.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(\
-             self.name+'_'+str(d.idn),baitSym,woff,d.score,baitOrg,worg,baitEnt,weid,self.name,\
+             self.name+'_'+str(d.idn),baitSym,woff,score,baitOrg,worg,baitEnt,weid,self.name,\
              notestring)); 
 
         outfile.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(\

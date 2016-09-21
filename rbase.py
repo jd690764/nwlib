@@ -6,7 +6,7 @@ import os
 from os.path import isfile
 
 from lib import config as cf
-from lib import interactors as I 
+from lib import interactors as ias
 from lib import filters as ftr
 
 
@@ -236,17 +236,17 @@ def load_biogrid(filters='default',m2h=False,h2m=False,force_qualify=True,superd
         mynf=None ; 
         myif=None ; 
         
-    biogrid=I.dataSet(i_filter=myif,n_filter=mynf,superdebug=superdebug) ; 
+    biogrid=ias.dataSet(i_filter=myif,n_filter=mynf,superdebug=superdebug) ; 
     bgfile=open(bgpath) ; 
-    biogrid.parse(bgfile,fd=I.fd_biogrid,m2h=m2h,h2m=h2m,force_qualify=force_qualify,qualify=qualify) ;
+    biogrid.parse(bgfile,fd=ias.fd_biogrid,m2h=m2h,h2m=h2m,force_qualify=force_qualify,qualify=qualify) ;
     bgfile.close()
 
 def load_preppi() : 
     global preppi ; 
     preppipath = cf.preppiPath ; 
-    preppi=I.dataSet() ; 
+    preppi=ias.dataSet() ; 
     preppi_f=open(preppipath) ;
-    preppi.parse(preppi_f,fd=I.fdms) ; 
+    preppi.parse(preppi_f,fd=ias.fdms) ; 
     preppi_f.close() ; 
 
 def firstnp(sym,ghash) : 
@@ -284,20 +284,20 @@ def load_refsuite(filters='default',m2h=False,h2m=False,superdebug=False,force=F
         mynf=None ; 
         myif=None ; 
 
-    refsuite=I.dataSet(i_filter=myif,n_filter=mynf,superdebug=superdebug) ; 
+    refsuite=ias.dataSet(i_filter=myif,n_filter=mynf,superdebug=superdebug) ; 
 
     bgfile=open(bgpath) ; 
-    refsuite.parse(bgfile,fd=I.fd_biogrid,m2h=m2h,h2m=h2m,force_qualify=True,\
+    refsuite.parse(bgfile,fd=ias.fd_biogrid,m2h=m2h,h2m=h2m,force_qualify=True,\
     force_score=0.0,qualify='bg') ; 
     bgfile.close() ; 
 
     emfile=open(empath) ; 
-    refsuite.parse(emfile,fd=I.fd_emili,m2h=m2h,h2m=h2m,force_qualify=True,\
+    refsuite.parse(emfile,fd=ias.fd_emili,m2h=m2h,h2m=h2m,force_qualify=True,\
     force_score=0.0,qualify='em') ; 
     emfile.close() ; 
 
     bpfile=open(bppath) ; 
-    refsuite.parse(bpfile,fd=I.fd_emili,m2h=m2h,h2m=h2m,force_qualify=True,directed=True,\
+    refsuite.parse(bpfile,fd=ias.fd_emili,m2h=m2h,h2m=h2m,force_qualify=True,directed=True,\
     force_score=0.0,qualify='bp') ; 
     bpfile.close() ; 
     

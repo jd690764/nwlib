@@ -62,7 +62,7 @@ highly_variable={\
 r'HIST.*',\
 r'AKR.*',\
 r'CSNK.*',\
-r'HB[ABGDEZQM][0-9]*',\                 
+r'HB[ABGDEZQM][0-9]*',\
 }
 
 pseudogenes={\
