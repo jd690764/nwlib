@@ -149,6 +149,11 @@ def findPA(query,txid="") :
 
     return None ; 
 
+#TODO : 
+#findTA,
+#fetchTA
+#TA get (etc.)
+
 def findPub(query,retmax=20) : 
     outs=set() ; 
     tries=0 ;

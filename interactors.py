@@ -1224,6 +1224,7 @@ def print_edges( edges, print_headers = True, print_mean_scores = False, print_w
 
 
 def humanize_node( n ):    
+    from lib import rbase
 
     rbase.load( 'm2h' )
     rbase.load( 'hsg' )
@@ -1231,6 +1232,7 @@ def humanize_node( n ):
 
 
 def mouseify_node( n ):
+    from lib import rbase
 
     rbase.load( 'h2m' )
     rbase.load( 'mmg' )    
