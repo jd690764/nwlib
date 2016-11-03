@@ -1,12 +1,14 @@
 import tkinter,tkinter.filedialog
 import sys
-from lib import markutils as mu
 import re
 from os.path import isfile
 from os import remove
 import importlib
+
 from django.forms import model_to_dict
-#from lib import rbase
+
+from lib import markutils as mu
+from lib import rbase
 from lib import filters
 
 
@@ -281,6 +283,9 @@ class bgedge(object):
         totalscore   - total score of contained interactions
         weight       - number of interactions in edge
         whence       - sourcenode for interactions (i.e. APMS bait)
+        avgP         - avgP avg prob the edge is real (from saint if used)
+        spc          - spectral counts (e.g.: "123|132|...")
+        bkg          - background values used to calculate significance (e.g.: "1|234|1|...")
     """
     def __init__( self, interaction = None, directed = None, qual = '' ): 
 
@@ -294,7 +299,10 @@ class bgedge(object):
         self.to             = None
         self.totalscore     = 0.0
         self.weight         = 0
-        self.whence         = None 
+        self.whence         = None
+        self.avgP           = 0.0
+        self.spc            = ''
+        self.bkg            = ''
 
         if interaction : 
             self.add_interaction( interaction ) ; 
