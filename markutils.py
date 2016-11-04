@@ -112,7 +112,7 @@ def randomProperNouns(numNouns) :
 
     from random import choice
 
-    wordsf=file( cf.properNounsPath,'r') ;
+    wordsf=open( cf.properNounsPath,'r') ;
     chosen_randoms=set() ;
     out=list() ;
 
