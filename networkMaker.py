@@ -8,11 +8,17 @@ import colorama
 import numpy as np
 import yaml
 import re
+from subprocess import call
+import numpy
 from lib import interactors as I
 from lib import interactors_extras as ie
 from lib import rbase
 from lib.markutils import b4us,afterus
 from lib import config as cf
+from lib import utils
+
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 DB           = False
 deprecation  = colorama.Fore.RED+" DEPRECATED 21 APRIL 2016 "+colorama.Fore.RESET
@@ -64,25 +70,29 @@ def readYAMLfile( yamlfile, c ) :
         if dsd['control'] not in refFiles:
             pFile     = ie.createReferenceFile( dsd['control'], overWrite = False)
             refFiles[dsd['control']] = pFile
+            dsd['control_ori']       = dsd['control']            
             dsd['control']           = pFile
-                                                 
+            
     if lost_files > 0 : 
         raise IOError
 
-    c['organism']     = yout['options'].get('organism','human')
-    c['ALPHA_HI']     = yout['options'].get('alpha_hi',0.01)
-    c['ALPHA_LO']     = yout['options'].get('alpha_lo',0.05)
-    c['FLOOR_HI']     = yout['options'].get('floor_hi',4)
-    c['FLOOR_LO']     = yout['options'].get('floor_lo',4)
-    c['CORRL_HI']     = yout['options'].get('corrl_hi',70)
-    c['CORRL_LO']     = yout['options'].get('corrl_lo',70)
-    c['rescue_deg']   = yout['options'].get('degree_to_rescue',1)
-    c['valid_quals']  = yout['options'].get('valid_degree_quals',{'wt',})
-    c['mt_method']    = yout['options'].get('mt_method','fdr_bh')
-    c['node_filter']  = yout['options'].get('node_filter', None)
-    c['iact_filter']  = yout['options'].get('iact_filter', None) 
-    c['nwd']          = yout['options'].get('network-wide_degree',False)
-    c['public_dicts'] = yout['public']
+    c['organism']      = yout['options'].get('organism','human')
+    c['ALPHA_HI']      = yout['options'].get('alpha_hi',0.01)
+    c['ALPHA_LO']      = yout['options'].get('alpha_lo',0.05)
+    c['FLOOR_HI']      = yout['options'].get('floor_hi',4)
+    c['FLOOR_LO']      = yout['options'].get('floor_lo',4)
+    c['CORRL_HI']      = yout['options'].get('corrl_hi',70)
+    c['CORRL_LO']      = yout['options'].get('corrl_lo',70)
+    c['rescue_deg']    = yout['options'].get('degree_to_rescue',1)
+    c['valid_quals']   = yout['options'].get('valid_degree_quals',{'wt',})
+    c['mt_method']     = yout['options'].get('mt_method','fdr_bh')
+    c['filter_by']     = yout['options'].get('filter_by','avgp')    
+    c['node_filter']   = yout['options'].get('node_filter', None)
+    c['iact_filter']   = yout['options'].get('iact_filter', None) 
+    c['rescueNetWide'] = yout['options'].get('network-wide_degree',False)
+    c['rescueLocal']   = yout['options'].get('rescue_local', False)
+    c['rescueByComp']  = yout['options'].get('rescue_by_complex',False)
+    c['public_dicts']  = yout['public']
     # this should be a list of dicts
     # each dict (1/public file) should have the fields : infilename qualify convert misncore minweight
     # public datasets have NO baits, are NOT DIRECTED, and are NEVER compared to negative controls
@@ -109,13 +119,13 @@ def readYAMLfile( yamlfile, c ) :
         c['idbfilename']  = c['yidbfilename']
         
 
-def readInDatasets( nwdata, c ):
+def readInDatasets( nwdata, c, dict_to_use, keys ):
 
     # parse datasets
     baitkeys      = list()
 
     # iterating through the dataset items
-    for dsd in c['ds_dicts'] : 
+    for dsd in c[ dict_to_use ] : 
 
         if dsd['infilename'] in os.listdir('.') : 
             dsf = open(dsd['infilename'])
@@ -136,7 +146,7 @@ def readInDatasets( nwdata, c ):
 
         dsf.close()
 
-    c['baitkeys'] = baitkeys
+    c[ keys ] = baitkeys
     
 
 def filterNodesByBackground( nwdata, c ):
@@ -153,16 +163,20 @@ def filterNodesByBackground( nwdata, c ):
                                                 qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
                                                 floor = c['FLOOR_LO'], maxcorr = c['CORRL_LO'], debug = DB ,
                                                 method = c['mt_method'] )
-        
-    # expt bait to node edges, that are deemed significant
-    zfhits_joint           = zfhits_strong | zfhits_weak
 
+    store_first_pass_data( nwdata, c, zfhits_strong, zfhits_weak )
+    
+        
+def store_first_pass_data( nwdata, c, strong_hits, weak_hits ):
+    # expt bait to node edges, that are deemed significant
+    joint_hits             = strong_hits | weak_hits
+    # pp.pprint( joint_hits )
     # pass 1 nodes : every node at the end of one of the validated edges
     # remove nodes that don't have experimental edges pointing to them
-    node_pass1_all         = { nk for ek in zfhits_joint  for nk in { nwdata.edges[ek].to.key, nwdata.edges[ek].whence.key}}
-    node_pass1_strong      = { nk for ek in zfhits_strong for nk in { nwdata.edges[ek].to.key, nwdata.edges[ek].whence.key}}
+    node_pass1_all         = { nk for ek in joint_hits  for nk in { nwdata.edges[ek].to.key, nwdata.edges[ek].whence.key}}
+    node_pass1_strong      = { nk for ek in strong_hits for nk in { nwdata.edges[ek].to.key, nwdata.edges[ek].whence.key}}
 
-    c['zfhits_joint']      = zfhits_joint
+    c['joint_hits']        = joint_hits
     c['node_pass1_all']    = node_pass1_all
     c['node_pass1_strong'] = node_pass1_strong
     
@@ -240,52 +254,76 @@ def rescueEdgesByPublic( nwdata, c ):
     
     reinforcing_edges = set()
     edges_pass1       = set()
+    #pp.pprint( nwdata.edges.values() )
     for e in list( nwdata.edges.values()) : 
-        if e.key in c['zfhits_joint'] : 
+        if e.key in c['joint_hits'] : 
             # passed filtering
             edges_pass1.add(e)
 
-        elif {e.to.key,e.whence.key}.issubset( c['node_pass1_all'] ) and e.qual in\
-             { pd.get('qualify','') for pd in c['public_dicts'] } and e.to.key != e.whence.key : 
+        elif {e.to.key,e.whence.key}.issubset( c['node_pass1_all'] )\
+             and e.qual in { pd.get('qualify','') for pd in c['public_dicts'] }\
+             and e.to.key != e.whence.key : 
             edges_pass1.add(e)
             reinforcing_edges.add(e)
 
     c['reinforcing_edges'] = reinforcing_edges
     c['edges_pass1']       = edges_pass1
 
+def getComplexes( c ):
+    # read in complexes
+    complexes = dict()
+    with open( cf.complexByGeneFile, 'rt' ) as cbg:
+        for line in cbg:
+            v = line.rstrip().split('\t')
+            complexes[ v[0] ] = set( v[1].split('|') )
+    return complexes
     
 def secondaryFiltration( nwdata, c ):
 
     rescueEdgesByPublic( nwdata, c )
-    vqe            = networkwideRescue( nwdata.edges.values(), c ) if c['nwd'] else set( )
+    vqe            = networkwideRescue( nwdata.edges.values(), c ) if c['rescueNetWide'] else set( )
+    complexes      = getComplexes( c ) if c['rescueByComp'] else dict()
     rescued        = rescueListNodes( c )
     nnodes_rescued = 0
     nodes_pass2    = set()    
 
     # vet every node in the network
     for nk in c['node_pass1_all'] :
+
         if nk in c['node_pass1_strong'] :
             # keep node if it passed strong filter
             nodes_pass2.add(nk)
+
         elif b4us(nk) in rescued or afterus(nk) in rescued :
             # keep the node if it is on the rescue list:
             nodes_pass2.add(nk)
             nnodes_rescued  += 1
+
         elif any([ nwdata.nodes[nk].binds( bk, within_edge_set = c['reinforcing_edges']) and \
-                   nwdata.nodes[nk].binds( bk, within_edge_set = c['zfhits_joint'] ) 
+                   nwdata.nodes[nk].binds( bk, within_edge_set = c['joint_hits'] ) 
                    for bk in c['baitkeys'] ]) : 
-            # if the node binds a bait (bk) with both a publicly recognized edge and
-            # an observed weak edge, make sure that node stays
+            # keep the node if it binds a bait (bk) with both a public edge and
+            # an experimental weak edge
             nodes_pass2.add(nk)
             nnodes_rescued  += 1            
-        elif not c['nwd'] :
-            # rationale for this filter:
+
+        elif c['rescueByComp'] and len([ on for on in c['node_pass1_all']
+                                         if nk != on
+                                         and b4us(nk) in complexes
+                                         and b4us(on) in complexes
+                                         and bool( complexes[b4us(nk)] & complexes[b4us(on)])]) >= c['rescue_deg']:
+            # keep node if there is another member of a complex among 'node_pass1_all'
+            nodes_pass2.add( nk )
+            nnodes_rescued += 1
+
+        elif c['rescueLocal'] :
+            # keep the node if it has at least 'rescue_deg' neighbors that themselves
+            # bind a bait with edges within 'edges_pass1'
+            # call this 'local rescue'
             edges_this_node = { e.key for es in nwdata.nodes[nk].edges.values() for e in es }\
                 & ( c['edges_pass1'] | c['reinforcing_edges'] ); 
             # possibly ok edges
             vqe = networkwideRescue( edges_this_node, c )
-            # should this be renamed NON-network wide rescue?
-
             for bk in c['baitkeys'] : 
                 partners_this_node={ n for n in nwdata.nodes[nk].partners.values() if\
                                      nwdata.nodes[nk].binds( n, within_edge_set = vqe) and \
@@ -296,10 +334,10 @@ def secondaryFiltration( nwdata, c ):
                     nnodes_rescued  += 1                                
                     break
 
-        elif c['nwd'] and nwdata.nodes[nk].nneighbors(within_edge_set = vqe) >= c['rescue_deg'] :
-            # rationale for this filter:
+        elif c['rescueNetWide'] and nwdata.nodes[nk].nneighbors(within_edge_set = vqe) >= c['rescue_deg'] :
+            # keep node if it has at least 'rescue_deg' neighbors within all qual edges
             nodes_pass2.add(nk)
-            nnodes_rescued  += 1            
+            nnodes_rescued += 1
 
     edges_pass2 = set()            
     for bk in c['baitkeys'] : 
@@ -320,9 +358,9 @@ def secondaryFiltration( nwdata, c ):
 unitransform = lambda x : 7.0 if x==0.0 else -1 * np.log10(x)
 
 def makeOutput( nwdata, c ):
-        
+
     ie.print_springs( c['edges_pass2'], print_headers = True, print_weights = True, transform_scores = unitransform,
-                      print_quals = True, fname = c['outfilename'] ,print_pps=True)
+                      print_quals = True, fname = c['outfilename'] ,print_pps=True, print_bkg = False )
 
     sys.stdout.write("Nodes:\n  Pass 1: {}\n    Strong: {}\n  Pass 2: {}\n    Rescued : {}\n\n".
                      format( len( c['node_pass1_all'] ), len( c['node_pass1_strong'] ), len( c['nodes_pass2'] ), c['nnodes_rescued'] ))
@@ -341,25 +379,195 @@ def makeOutput( nwdata, c ):
     if 'idbfilename' in c :
         nwdata.save( c['idbfilename'], nodes = c['nodes_pass2'], edges = c['edges_pass2'] )
 
+def makeSaintInputFiles( nwdata, cdata, c, add_replicate = False ):
 
+    inter = dict() # all the interactions to be put in output file
+    preys = dict() # all preys in non-control datasets
+    baits = dict() # all baits in samples/controls
+    numpy.random.seed( 123 )
+        
+    for dsd in c['ds_dicts'] :
+        # the bait_qualify value is going to be the 'bait' 
+        baits[ dsd['infilename']] = dsd.get('bait') + '_' + dsd.get('qualify') + "\t" + 'T'
+        if add_replicate:
+            baits[ dsd['infilename'] + '.r' ] = dsd.get('bait') + '_' + dsd.get('qualify') + "\t" + 'T'
+        bkey = tokey(c, dsd['bait'])
+        for e in { e for es in nwdata.nodes[ bkey ].edges.values() for e in es  } :
+            if dsd.get('qualify') and dsd.get('qualify') != e.qual:
+                continue
+            elif e.to.key == bkey or e.to.key == 'PSEUDO_00':
+                continue
+
+            prey = re.sub(r'^(.+)_\d+$', '\\1', e.to.key)
+            sc   = int(sum([ int(re.sub(r'^.+_(\d+)$', '\\1', i.tags)) for i in e.interactions ]) / len(e.interactions))
+            aal  = sum([ float(re.sub( r'^.+len_(.+)_raw.*$', '\\1', i.tags )) for i in e.interactions ]) / len(e.interactions)
+            i    = dsd['infilename'] + "\t" + dsd.get('bait') + '_' + e.qual + "\t" + prey 
+            ir   = dsd['infilename'] + '.r'  + "\t" + dsd.get('bait') + '_' + e.qual + "\t" + prey
+            
+            if sc > 1: # skip preys with spectral count = 1
+                preys[ prey ]   = aal
+                if i not in inter:
+                    inter[ i ]  = list()
+                if add_replicate and ir not in inter:
+                    inter[ ir ] = list()
+                inter[ i ].append( sc )
+                if add_replicate:
+                    scr = int(numpy.random.normal( sc , 10, size = None))
+                    scr = scr if scr > 0 else 0
+                    inter[ ir ].append( scr )
+
+    counter   = 1
+    for dsd in c['c_dicts'] :
+        ckey          = 'C_' + str( counter )
+        counter       = counter + 1
+        baits[ ckey ] = ckey + "\t" + 'C'
+        bkey          = tokey(c, dsd['bait'])
+        for e in { e for es in cdata.nodes[ bkey ].edges.values() for e in es  } :
+            if dsd.get('qualify') and dsd.get('qualify') != e.qual:
+                continue
+            elif e.to.key == bkey or e.to.key == 'PSEUDO_00':
+                continue
+
+            prey = re.sub(r'^(.+)_\d+$', '\\1', e.to.key)
+            sc   = int(sum([ int(re.sub(r'^.+_(\d+)$', '\\1', i.tags)) for i in e.interactions ]) / len(e.interactions))
+            i    = ckey + "\t" + ckey + "\t" + prey 
+
+            if prey in preys:
+                if i not in inter:
+                    inter[ i ] = list()
+                inter[ i].append( sc )
+
+        for p in preys:
+            ip   = ckey + "\t" + ckey + "\t" + p 
+            if ip not in inter:
+                inter[ ip ] = [ 0 ]
+
+    with open( 'tmp/saint.inter.txt', 'wt') as oh:
+        for k, v in sorted(inter.items()):
+            oh.write( k + '\t' + ','.join(map(str, v)) + "\n")
+    with open( 'tmp/saint.preys.txt', 'wt') as oh:
+        for k, v in sorted(preys.items()):
+            oh.write( k + '\t' + str( v ) + "\n")
+    with open( 'tmp/saint.baits.txt', 'wt') as oh:
+        for k, v in sorted(baits.items()):
+            oh.write( k + '\t' + v + "\n")
+            
+def readControls( c ):
+
+    cntrl = I.dataSet(n_filter = config['node_filter'], debug = DB)
+    for dsd in c['ds_dicts'] :
+        cfile = dsd['control_ori']
+        # assumed that this is the same in all datasets and
+        # it is a file of a list of ifilenames
+        break
+
+    c_dicts = list()
+    with open( cfile, 'rt' ) as fh:
+        for line in fh:
+            ifname = line.rstrip()
+            bait   = line.split('_')[0]
+            c_dicts.append( { 'infilename': ifname, 'bait': bait, 'qualify': ifname })
+
+    c['c_dicts'] = c_dicts
+    readInDatasets( cntrl, c, 'c_dicts', 'cntrlkeys' )
+    return cntrl
+
+def filterSaintData( ds, c, saint, cutoff, cutoff_value, update = False ):
+
+    selected_edges = set( )
+    
+    # assign saint scores to appropriate edges   
+    for dsd in c['ds_dicts']:
+        bait = dsd['bait']
+        ek_prey, x, y = ie.dataset_edges_for_bait( ds, baitkey = tokey(c, bait), qual = dsd.get('qualify', ''), directed = True, debug = DB )
+        for ek in ek_prey.keys() :
+            values = [ 0, 1 ]
+            e      = ds.edges[ek]
+            qual   = e.qual
+            prey   = e.to.official
+            # assign FDR to p and avgP to a new attr, avgP
+            #print( bait + '\t' + prey + '\t' + qual )
+            if bait in saint and prey in saint[bait] and qual in saint[bait][prey] and isinstance( saint[bait][prey][qual], list ):
+                values = saint[bait][prey][qual]
+                if update:
+                    ds.edges[ek].p    = saint[bait][prey][qual][ 1 ]
+                    ds.edges[ek].avgP = saint[bait][prey][qual][ 0 ]
+                    ds.edges[ek].bkg  = saint[bait][prey][qual][ 2 ]
+                    ds.edges[ek].spc  = saint[bait][prey][qual][ 3 ]
+                    
+            #print( e.key + '\t' + str(ds.edges[ek].p) + '\t' + str(saint[bait][prey][qual][ 1 ]))
+            if cutoff == 'fdr' and values[1] < cutoff_value:
+                selected_edges.update( [ek] )
+            elif cutoff == 'avgp' and values[0] > cutoff_value:
+                selected_edges.update( [ek] )
+                #print( ek )
+
+    return selected_edges
+                
+def scoreBySaintx( ds, c ):
+    
+    # network for control experiments
+    cntrl = readControls( c )
+    # create input files for saintExpress
+    makeSaintInputFiles( ds, cntrl, c, add_replicate = True )
+    # run saintExpress
+    call( [ 'saintx', 'tmp/saint.inter.txt', 'tmp/saint.preys.txt', 'tmp/saint.baits.txt'] )
+    # the output is in the root directory
+    os.rename( 'list.txt', 'tmp/list.txt' )
+    # read in saint scores
+    saint_data = dict()
+    with open( 'tmp/list.txt' ) as lf:
+        for line in lf:
+            if re.search( r'^Bait', line ):
+                continue
+            fields = line.rstrip().split( '\t' )
+            y      = fields[ 0 ].split( '_' )
+            # save bait, prey, qual, avgP, FDR, ctrlCounts
+            if y[0] not in saint_data:
+                saint_data[ y[0] ] = dict()
+            if fields[1] not in saint_data[ y[0] ]:
+                saint_data[ y[0] ][ fields[1] ] = dict()
+            if y[1] not in saint_data[ y[0] ][ fields[1] ]:
+                saint_data[ y[0] ][ fields[1] ][ y[1] ] = list()
+            saint_data[ y[0] ][ fields[1] ][ y[1] ].extend( [ float(fields[8]), float(fields[15]), fields[7], fields[3] ] )
+
+    #pp.pprint(saint_data)
+    hits_strong  = filterSaintData( ds, c, saint_data, c['filter_by'], c['ALPHA_HI'], True )
+    hits_weak    = filterSaintData( ds, c, saint_data, c['filter_by'], c['ALPHA_LO'], False )
+
+    store_first_pass_data( ds, c, hits_strong, hits_weak )    
+
+def makeGctFiles( cf ):
+
+    ifiles = list()
+    for ds in cf['ds_dicts']:
+        ifiles.append( ds['infilename'] )
+
+    utils.makeGct( ifiles, cf['outfilename'] + '.gct', scoreCol = 9 )
+
+    
 def createNetwork( yamlfile ) :
 
     readYAMLfile( yamlfile, config )
     loadObjects( config )
-    
+
     theds = I.dataSet(n_filter = config['node_filter'], debug = DB)
 
-    readInDatasets( theds, config )
+    readInDatasets( theds, config, 'ds_dicts', 'baitkeys' )
 
-    # filter experimental data by background dists 
-    filterNodesByBackground( theds, config )
+    if config['mt_method'] == 'fdr_bh':
+        # filter experimental data by background dists 
+        filterNodesByBackground( theds, config )
+        
+    elif config['mt_method'] == 'saintx':
+        scoreBySaintx( theds, config )
+    else:
+        pass
 
     readPublicDatasets( theds, config )
-
     secondaryFiltration( theds, config )
-
     makeOutput( theds, config )
-
+    
     return theds,config
     
 if __name__ == "__main__":

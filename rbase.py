@@ -6,7 +6,7 @@ import os
 from os.path import isfile
 
 from lib import config as cf
-from lib import interactors as ias
+#from lib import interactors as ias
 from lib import filters as ftr
 
 

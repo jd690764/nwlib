@@ -3,8 +3,32 @@ import os
 import pycurl, sys, traceback, logging
 import gzip
 import yaml
+import ftplib
+import re
 
 from lib import config as cf
+
+def findURL( url, diry, pattern ):
+    ftp        = ftplib.FTP( url )
+    ftp.login()
+    ftp.cwd( diry )
+    rfiles     = []
+    dlfile     = None
+    
+    try:
+        rfiles = ftp.mlsd()
+    except ftplib.error_perm as resp:
+        if str(resp) == "550 No files found":
+            print( "No files in this directory" )
+        else:
+            raise
+
+    for rf in rfiles:
+        if re.search( pattern, rf[0] ):
+            dlfile = url + '/' + diry + rf[0]
+            break
+
+    return dlfile
 
 def unzip(zipFilePath, destDir):
     zfile = zipfile.ZipFile(zipFilePath)
@@ -22,9 +46,12 @@ def unzip(zipFilePath, destDir):
             fd.close()
     zfile.close()
 
-def downloadFromUrl( url, fpath ):
+def downloadFromUrl( url, fpath, append = False ):
 
-    with open( fpath, 'wb') as fh:
+    mode = 'wb'
+    if append:
+        mode = 'ab'
+    with open( fpath, mode) as fh:
         curl = pycurl.Curl()
         curl.setopt(pycurl.URL, url )
         curl.setopt(pycurl.FOLLOWLOCATION, 1)
@@ -41,10 +68,13 @@ def downloadFromUrl( url, fpath ):
             logging.debug('Wrote {} '.format(sys.argv[1]))
         curl.close()
 
-def gunzip( gzFile, path, destFile ):
+def gunzip( gzFile, path, destFile, append = False ):
+    mode = 'wt'
+    if append:
+        mode = 'at'
     if os.path.exists( gzFile ) and os.path.exists( path ):
         with gzip.open( gzFile, 'rt' ) as src:
-            with open( destFile, 'wt' ) as dest:
+            with open( destFile, mode ) as dest:
                 dest.writelines( src )
     else:
         print( 'check if paths exist!' )
@@ -126,3 +156,45 @@ def read_config( yamlfile ):
     conf[ 'idbfilename' ] = idbfilename
 
     return conf
+
+_proc_status = '/proc/%d/status' % os.getpid()
+
+_scale = {'kB': 1024.0, 'mB': 1024.0*1024.0,
+          'KB': 1024.0, 'MB': 1024.0*1024.0}
+
+def _VmB(VmKey):
+    '''Private.
+    '''
+    global _proc_status, _scale
+     # get pseudo file  /proc/<pid>/status
+    try:
+        t = open(_proc_status)
+        v = t.read()
+        t.close()
+    except:
+        return 0.0  # non-Linux?
+     # get VmKey line e.g. 'VmRSS:  9999  kB\n ...'
+    i = v.index(VmKey)
+    v = v[i:].split(None, 3)  # whitespace
+    if len(v) < 3:
+        return 0.0  # invalid format?
+     # convert Vm value to bytes
+    return float(v[1]) * _scale[v[2]]
+
+
+def memory(since=0.0):
+    '''Return memory usage in bytes.
+    '''
+    return _VmB('VmSize:') - since
+
+
+def resident(since=0.0):
+    '''Return resident memory usage in bytes.
+    '''
+    return _VmB('VmRSS:') - since
+
+
+def stacksize(since=0.0):
+    '''Return stack size in bytes.
+    '''
+    return _VmB('VmStk:') - since

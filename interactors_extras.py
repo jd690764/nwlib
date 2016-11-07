@@ -826,7 +826,7 @@ def zfilter(query_ds,bg_dses,query_bait,bg_bait,logp = -3,as_dict=False,percenti
 def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_weights = False,
                    print_total_scores = False, print_mean_scores = False, print_organisms = False,
                    print_source = False, inter_string = 'pp', transform_scores = None,
-                   print_quals = True, print_pps = False ):
+                   print_quals = True, print_pps = False, print_saint = False, print_bkg = False ):
 
     def spring_transform(edge) : 
 
@@ -863,12 +863,21 @@ def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_we
             f.write("{}OrgA{}OrgB".format(sep,sep)) ; 
         if ( print_source ) :
             f.write("{}Source".format(sep,sep)) ; 
-        if print_pps : 
+        if print_pps :
+            if print_saint:
+                f.write("{}fdr".format(sep))
             f.write("{}logp".format(sep)) ; 
 
         # guaranteed springiness printing
-        f.write("{}Spring".format(sep)) ; 
+        f.write("{}Spring".format(sep)) ;
 
+        if print_saint:
+            f.write("{}avgP".format(sep)) ;
+
+        if print_bkg:
+            f.write("{}Background Values".format(sep))
+            f.write("{}Spectral Counts".format(sep))
+            
         f.write("\n") ;
 
     for edge in edges : 
@@ -902,13 +911,23 @@ def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_we
                 f.write("{}{}{}{}".format(sep,edget[0].organism,sep,edget[0].organism)) ;
         if ( print_source):
             f.write("{}{}".format(sep,edge.source)) ;
-        if print_pps : 
+        if print_pps :
+            if print_saint:
+                f.write("{}{}".format(sep,edge.p))
             f.write("{}{}".format(sep,-1*np.log10(edge.p)))
 
         # guaranteed springiness printing
 
         f.write("{}{}".format(sep,spring_transform(edge))) ; 
 
+        if print_saint:
+            f.write("{}{}".format(sep,edge.avgP))
+
+        if print_bkg:
+            f.write("{}{}".format(sep,edge.bkg))
+            edge.spc =  '|'.join([ re.sub( r'^.+_(\d+)$', r'\1', i.tags) for i in edge.interactions ])
+            f.write("{}{}".format(sep,edge.spc))            
+            
         f.write("\n") ;
 
     f.close()
@@ -1234,6 +1253,36 @@ def madfilter(dataset,ctrl_fname,baitkey,qual=None,directed=False,as_dict=False,
     else :
         return { eks[x] for x in range(len(eks)) if rejects[x] } ; 
 
+def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
+
+    #       ek --> preysymbol
+    #       ek --> meanscore
+    #       preysybmbol --> meanscore
+    
+    ek_ps = dict()
+    ek_ms = dict()
+    ps_ms = dict()
+
+    for e in { e for es in ds.nodes[baitkey].edges.values() for e in es  } :
+        if qual and e.qual != qual : 
+            if debug : 
+                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
+                ' skipped due to invalid qualifier\n'+e.qual) ;
+            continue ; 
+        if directed and e.to.key == baitkey : 
+            if debug : 
+                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
+                ' skipped due to wrong direction\n') ;
+            continue ;
+
+        # for the reason behind this constant, cf 
+        # https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation
+        ek_ps.update({ e.key : e.to.official })
+        ek_ms.update({ e.key : np.log10(e.meanscore) }) ;
+        ps_ms.update({ e.to.official : np.log10(e.meanscore) })
+
+    return ( ek_ps, ek_ms, ps_ms )
+
 def mad(series) : 
     return np.percentile(np.abs(series-np.percentile(series,50)),50) ; 
     
@@ -1310,30 +1359,8 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     #       -specified by bait, direction, qual
     #       -score is above -log10(floor) + -log10(pseudocount) 
     #   2) put those scores into dicts :
-    #       ek --> preysymbol
-    #       ek --> meanscore
-    #       preysybmbol --> meanscore
-    ek_ps = dict()
-    ek_ms = dict()
-    ps_ms = dict()
-
-    for e in { e for es in dataset.nodes[baitkey].edges.values() for e in es  } :
-        if qual and e.qual != qual : 
-            if debug : 
-                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-                ' skipped due to invalid qualifier\n'+e.qual) ;
-            continue ; 
-        if directed and e.to.key == baitkey : 
-            if debug : 
-                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-                ' skipped due to wrong direction\n') ;
-            continue ;
-
-        # for the reason behind this constant, cf 
-        # https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation
-        ek_ps.update({ e.key : e.to.official })
-        ek_ms.update({ e.key : np.log10(e.meanscore) }) ;
-        ps_ms.update({ e.to.official : np.log10(e.meanscore) })
+    
+    ek_ps, ek_ms, ps_ms = dataset_edges_for_bait( dataset, baitkey, qual, directed, debug )
 
     # NEXT : remove datasets from background that are highly correlated with the query dataset
     v = np.array([ ps_ms.get( allsyms[x], ps_ms['PSEUDO']) for x in range(len(allsyms)) ])
@@ -1359,6 +1386,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     # calculate mad scores and p values
     maddict  = dict()
     peedict  = dict()
+    bkgdict  = dict()
 
     for ek in ek_ps.keys() :
         e = dataset.edges[ek] ;
@@ -1369,7 +1397,8 @@ def madfilter_corr( dataset,                # network dataset to process, intera
             continue ;
 
         if e.to.official not in symset : 
-            madscore = (ek_ms[ek]- np.median(compgrid[pseudoindex,:])) / mad(compgrid[pseudoindex,:])/ 1.48 ; 
+            madscore = (ek_ms[ek]- np.median(compgrid[pseudoindex,:])) / mad(compgrid[pseudoindex,:])/ 1.48 ;
+            bkgvls   = compgrid[pseudoindex,:]
             if debug :
                 sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
                 ' not in background - given score '+'{:8.6}'.format(madscore)+' (pseudocounted) \n') ;
@@ -1378,6 +1407,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
             i        = allsyms.index( e.to.official )
             madscore = ( ek_ms[ek] - np.median(compgrid[i,:])) / mad(compgrid[i,:]) / 1.48 ;
             p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
+            bkgvls   = compgrid[i,:]
             if debug : 
                 sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key +
                                  ' given score '+'{:8.6}'.format(madscore)+'; nsaf vs. p05_cut =' +
@@ -1385,14 +1415,17 @@ def madfilter_corr( dataset,                # network dataset to process, intera
 
         maddict.update({ e.key : madscore }) ;
         peedict.update({ e.key : 1-norm.cdf(madscore) })
+        bkgdict.update({ e.key : "|".join( map( str, bkgvls)) })
+        
         if debug : 
             sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
             ' given non-adjusted p-value '+'{:8.6}'.format(peedict[e.key])+'  \n') ;
 
                     
-    eks  = list(maddict.keys()) ; 
-    mads = list(maddict.values()) ; 
-    pees = list(peedict.values())
+    eks  = list( maddict.keys() ) 
+    mads = list( maddict.values() ) 
+    pees = list( peedict.values() )
+    bkgs = list( bkgdict.values() )
 
     rejects, adjpees = multipletests( pees, alpha = alpha, method = method )[0:2]
 
@@ -1400,8 +1433,9 @@ def madfilter_corr( dataset,                # network dataset to process, intera
 
     if assign_edge_ps : 
         for i in range(len(eks)) : 
-            dataset.edges[eks[i]].p    =   adjpees[i] ; 
-
+            dataset.edges[eks[i]].p    = adjpees[i]
+            dataset.edges[eks[i]].bkg  = bkgs[i]
+            
     #adjval = { pees[x] for x in range(len(eks)) if rejects[x] }
     if debug : 
         import colorama
