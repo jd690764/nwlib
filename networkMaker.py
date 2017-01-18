@@ -28,7 +28,7 @@ config       = { 'ifiles' : cf.ifilesPath,
                  'outfilename'  : '',
                  'rescue_f'     : None }
 
-def tokey(c, s) :
+def tokey_single(c, s) :
     if c['organism'] == 'human':
         if s in rbase.hmg['Symbol'] : 
             return s+'_'+rbase.hmg['Symbol'][s]['EID']
@@ -43,6 +43,15 @@ def tokey(c, s) :
             return s
         else : 
             return s+'_00' ;
+
+def tokey( c, s ):
+    if type(s) is list:
+        keys = list()
+        for item in s:
+            keys.append( tokey_single( c, item ))
+        return keys
+    else:
+        return tokey_single( c, s )    
 
     
 def loadObjects( c ):
@@ -142,7 +151,11 @@ def readInDatasets( nwdata, c, dict_to_use, keys ):
         else : 
             nwdata.parse( dsf, fd = I.fdms, qualify = dsd.get('qualify',''), directed = True )
 
-        baitkeys.append(tokey(c, dsd['bait']))
+        k = tokey(c, dsd['bait'])
+        if type(k) is list: 
+            baitkeys.extend( k )
+        else:
+            baitkeys.append( k )
 
         dsf.close()
 
@@ -170,7 +183,7 @@ def filterNodesByBackground( nwdata, c ):
 def store_first_pass_data( nwdata, c, strong_hits, weak_hits ):
     # expt bait to node edges, that are deemed significant
     joint_hits             = strong_hits | weak_hits
-    # pp.pprint( joint_hits )
+
     # pass 1 nodes : every node at the end of one of the validated edges
     # remove nodes that don't have experimental edges pointing to them
     node_pass1_all         = { nk for ek in joint_hits  for nk in { nwdata.edges[ek].to.key, nwdata.edges[ek].whence.key}}
@@ -254,7 +267,7 @@ def rescueEdgesByPublic( nwdata, c ):
     
     reinforcing_edges = set()
     edges_pass1       = set()
-    #pp.pprint( nwdata.edges.values() )
+
     for e in list( nwdata.edges.values()) : 
         if e.key in c['joint_hits'] : 
             # passed filtering
@@ -341,15 +354,16 @@ def secondaryFiltration( nwdata, c ):
 
     edges_pass2 = set()            
     for bk in c['baitkeys'] : 
+        if bk in nwdata.nodes:
+            real_partners_this_node = { nk for nk in nodes_pass2 \
+                                        if nwdata.nodes[bk].binds( nk, within_edge_set = c['edges_pass1'] | c['reinforcing_edges']) }
+            real_partners_this_node.add(bk)
 
-        real_partners_this_node = { nk for nk in nodes_pass2 \
-                                    if nwdata.nodes[bk].binds( nk, within_edge_set = c['edges_pass1'] | c['reinforcing_edges']) }
-
-        real_partners_this_node.add(bk)
-
-        edges_pass2    |= { e for e in c['edges_pass1'] | c['reinforcing_edges']
-                            if {e.to.key,e.whence.key}.issubset(real_partners_this_node) }
-
+            edges_pass2    |= { e for e in c['edges_pass1'] | c['reinforcing_edges']
+                                if {e.to.key,e.whence.key}.issubset(real_partners_this_node) }
+        else:
+            print( bk + ' is not among the network nodes!' )
+            
     c['nodes_pass2']    = nodes_pass2
     c['edges_pass2']    = edges_pass2
     c['nnodes_rescued'] = nnodes_rescued
@@ -486,7 +500,6 @@ def filterSaintData( ds, c, saint, cutoff, cutoff_value, update = False ):
             qual   = e.qual
             prey   = e.to.official
             # assign FDR to p and avgP to a new attr, avgP
-            #print( bait + '\t' + prey + '\t' + qual )
             if bait in saint and prey in saint[bait] and qual in saint[bait][prey] and isinstance( saint[bait][prey][qual], list ):
                 values = saint[bait][prey][qual]
                 if update:
@@ -495,12 +508,10 @@ def filterSaintData( ds, c, saint, cutoff, cutoff_value, update = False ):
                     ds.edges[ek].bkg  = saint[bait][prey][qual][ 2 ]
                     ds.edges[ek].spc  = saint[bait][prey][qual][ 3 ]
                     
-            #print( e.key + '\t' + str(ds.edges[ek].p) + '\t' + str(saint[bait][prey][qual][ 1 ]))
             if cutoff == 'fdr' and values[1] < cutoff_value:
                 selected_edges.update( [ek] )
             elif cutoff == 'avgp' and values[0] > cutoff_value:
                 selected_edges.update( [ek] )
-                #print( ek )
 
     return selected_edges
                 
@@ -531,7 +542,6 @@ def scoreBySaintx( ds, c ):
                 saint_data[ y[0] ][ fields[1] ][ y[1] ] = list()
             saint_data[ y[0] ][ fields[1] ][ y[1] ].extend( [ float(fields[8]), float(fields[15]), fields[7], fields[3] ] )
 
-    #pp.pprint(saint_data)
     hits_strong  = filterSaintData( ds, c, saint_data, c['filter_by'], c['ALPHA_HI'], True )
     hits_weak    = filterSaintData( ds, c, saint_data, c['filter_by'], c['ALPHA_LO'], False )
 
@@ -562,7 +572,9 @@ def createNetwork( yamlfile ) :
     elif config['mt_method'] == 'saintx':
         scoreBySaintx( theds, config )
     else:
-        pass
+        config['joint_hits']        = set(theds.edges.keys())
+        config['node_pass1_all']    = set(theds.nodes.keys())
+        config['node_pass1_strong'] = set(theds.nodes.keys())
 
     readPublicDatasets( theds, config )
     secondaryFiltration( theds, config )
