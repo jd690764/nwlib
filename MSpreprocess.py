@@ -14,6 +14,7 @@ import lib.peputils as pep
 import lib.engarde as E 
 import lib.rbase as rb
 import lib.filters as flt
+import pandas as pd
 
 from network.models import Entrez, Ncbiprot
 
@@ -283,7 +284,7 @@ class MSdata(object) :
             else : 
                 self.background[sym] += row[6].value
 
-    def parseSUMS( self, infobj, unTruncate = True, sep = '\t' ) :
+    def parseSUMS( self, infobj, unTruncate = True, sep = '\t', overWrite = True ) :
 
         # column header for this type of file, e.g.:
         # "Rank Number"	"Protein Name"	ZFP_1	ZFP_2	ZFP_3	ZFP_4	ZFP_5	ZFP_6	ZFP_7	ZFP_8	MAX	SUM
@@ -291,8 +292,9 @@ class MSdata(object) :
         f            = infobj
         s            = f.readline().strip().split(sep) # moves past headers
         maxCtDatum   = None 
-        maxCt        = 0 
-        self.infnames.append(f.name) 
+        maxCt        = 0
+        if overWrite:
+            self.infnames.append(f.name) 
         
         for line in f :
             
@@ -345,6 +347,58 @@ class MSdata(object) :
 
         f.close()
 
+    def parseLaneExcel( self, infobj, unTruncate = True, sep = '\t' ) :
+
+        # a few other header lines ....
+        # Description	Reference	01	02	03	04	05	06	07	08	09	10	11	12	Total    A	B	Log(Ratio)	
+
+        self.infnames.append( infobj.name )
+
+        f      = infobj
+        fsum   = f.name + '.sums'
+        s      = f.readline().strip()
+        while not re.search( '^Description.*', s ):
+            s  = f.readline().strip() # moves past headers
+            s  = s if s else 'nothing'
+
+        head   = s.split( sep )
+        del head[1]
+        ind    = head.index( 'Total' ) + 1
+        head   = head[0:(ind - 1)] # keep only important column names
+        head.append( 'SUM' )
+        rows   = [] # collect rows 
+
+        for line in f :
+            # skip last line and some other junk
+            if not re.search( '^("?Total|\s).*', line ):
+                # replace '.' with NaN in values
+                line     = re.sub( '\t\s*\.', '\tNaN', line )
+                linel    = line.strip().split(sep)
+
+                # insert db ref into description field
+                if re.search( '^"?\*[A-Z]+\* .*', linel[0]):
+                    linel[0] = re.sub( r'^("?\*[A-Z]+\*)(.+)$', r'\1 >' + linel[1] + r'\2', linel[0] )
+                else:
+                    linel[0] = re.sub( r'^("?) ?(.+)$', r'\1>' + linel[1] + r' \2', linel[0] )
+
+                del linel[1] # del db reference field
+
+                lined = dict(zip(head, linel[0:ind]))
+                rows.append( lined ) # list of dictionaries (of rows)
+
+        tble           = pd.DataFrame(rows) # convert rows into pandas table
+        tble[['SUM']]  = tble[['SUM']].apply(pd.to_numeric) # change sum col to numeric
+        tble.sort_values( 'SUM', inplace = True, ascending = False ) # sort on the sum column
+        tble.index     = range(1, len(tble.index)+1) # rename rows to reflect current order
+
+        tble.to_csv(fsum, sep = '\t', index_label = 'Rank Number', columns = head ) # write out file
+
+        # now the file should be in SUMS format ...
+        fmod   = open( fsum, 'r' )  
+        self.parseSUMS( fmod, unTruncate, sep, False )
+        fmod.close()
+        os.remove( fsum )
+        
     def parse_pub(self,sep='\t') : 
 
         f=infobj
@@ -498,18 +552,14 @@ class MSdata(object) :
             sys.stderr.write("SCOREBYFP: Unsure what to score ")
             return
 
-        def notNone(serie) : 
-            for x in serie : 
-                if x != None : 
-                    return True
-            else : 
-                return False 
-
         # making sure that d.official does not match any item in exogenous
         # the 'p' function gets the correct 'property' of that line
         eidlens = dict() 
         bw      = 0.0
         for d in self.fwdata :
+            if not notNone( [d.entrez, d.organism] ):
+                print( str(d.entrez) + ' ' + str(d.organism))                
+                continue
             eidlens.update({ d : eidLen( d.entrez, d.organism )})
             if notNone([ r.match(d.official) for r in flt.exo ]) :
                 print( 'skip contaminants: ' + d.official)
@@ -687,7 +737,7 @@ class MSdata(object) :
                     weid=d.entrez 
 
             notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid, worg ))+'_raw_'+repr(d.totalcounts) 
-            score      = "{0:.12f}".format(d.score)
+            score      = "{0:.20f}".format(d.score)
             outfile.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(\
              self.name+'_'+str(d.idn),baitSym,woff,score,baitOrg,worg,baitEnt,weid,self.name,\
              notestring)); 
@@ -734,6 +784,14 @@ def seqRetter(descline) :
 
     return srdesc 
 
+def notNone(serie) : 
+    for x in serie : 
+        if x is None : 
+            return False
+
+    return True
+
+
 def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', reference = hsgREF ) : 
 
     def refertouser( faildesc ) :
@@ -743,9 +801,9 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
                 sys.stdout.write('Description in rbase.dup.\n')
             return rb.dup[ faildesc ] 
 
-        sys.stderr.write("\nDATASET: Provided description \n\t'{}'\n  cannot be mapped to any entrez entry.".\
-         format(faildesc ));
+        sys.stderr.write("\nDATASET: Provided description \n\t'{}'\n  cannot be mapped to any entrez entry.".format(faildesc ));
 
+        result = ()
         while True : 
             sys.stderr.write("Please input the correct symbol manually> ")
             sys.stderr.flush() 
@@ -755,21 +813,27 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
         try :
             if type(reference['symbol'][fetchedSym]) is list : 
-                (e,i,o)  = referwithlist(faildesc,reference[fetchedSym]) 
-                sys.stderr.write('Assigning entry to {}:{} (taxon {})\n'.format(e,i,o))
+                result  = referwithlist(faildesc,reference[fetchedSym]) 
+                sys.stderr.write('Assigning entry to {}:{} (taxon {})\n'.format(result))
                 sys.stderr.flush()
-                return ( e, i, o )
+                
             else : 
                 sys.stderr.write('Assigning entry to {}:{} (taxon {})\n'.format(reference['symbol'][fetchedSym]['eid'],fetchedSym,\
                  reference['symbol'][fetchedSym]['taxid']))
                 sys.stderr.flush()
-                return( reference['symbol'][fetchedSym]['eid'], fetchedSym, reference['symbol'][fetchedSym]['taxid'] )  
+                result = ( reference['symbol'][fetchedSym]['eid'], fetchedSym, reference['symbol'][fetchedSym]['taxid'] )  
         except (KeyError,TypeError) : 
             sys.stderr.write('Symbol {} doesn\'t match any records. Assigning EID and taxa 00.\n'\
             .format(fetchedSym))
             sys.stderr.flush()
-            return( '00', fetchedSym, '00' )  
+            result = ( '00', fetchedSym, '00' )  
 
+        print('updated dup1: ' + desc + ' - ' + repr(result))            
+        rb.dup.update({ desc : result })
+        rb.update_dup( rb.dup )    
+            
+        return result
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def referwithlist( desc, possreclist ) :
         global rbase 
@@ -833,9 +897,9 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         fromtre = reference['trembl'].get(mt.group(1).upper(),'')
     if mg : 
         fromsyn = reference['synonym'].get(mg.group(1),'') 
-    if mp : 
+    if mp :
         frompep = reference['peptide'].get(mp.group(1),'')
-
+        
     mid     = dict() 
     fromall = list() 
 
@@ -927,6 +991,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
         else:
             (entrez,sym,org) = refertouser(desc)
+
 #            if mt and mt.group(1) and entrez != '00' and org != '00'  : 
 #                rb.dup.update({ desc : (entrez,sym,org) }) 
 
@@ -939,8 +1004,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
-            rb.dup.update({ desc : (entrez,sym,org) })
-            rb.update_dup( rb.dup )
+
     elif tryhard and mt : 
         try : 
             swacc,seq     = E.fetchSw(mt.group(1),asTuple=True) 
@@ -950,8 +1014,9 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
-            rb.dup.update({ desc : (entrez,sym,org) })
-            rb.update_dup( rb.dup )
+            #rb.dup.update({ desc : (entrez,sym,org) })
+            #print('updateing dup2' )
+            #rb.update_dup( rb.dup )
     elif tryhard and mp : 
         try :
             rec=E.fetchPR(mp.group(1))
@@ -989,6 +1054,9 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
 def eidLen( eid, org, suppress = True ) : 
 
+    if not notNone( [eid, org] ):
+        return None
+        
     org = int(org)
     eid = int(eid) # some eids are '00' !
     
