@@ -370,7 +370,7 @@ class MSdata(object) :
 
         for line in f :
             # skip last line and some other junk
-            if not re.search( '^("?Total|\s).*', line ):
+            if not re.search( '^("?Total|\s|NaN).*', line ):
                 # replace '.' with NaN in values
                 line     = re.sub( '\t\s*\.', '\tNaN', line )
                 linel    = line.strip().split(sep)
