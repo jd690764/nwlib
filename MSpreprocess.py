@@ -310,9 +310,8 @@ class MSdata(object) :
             for c in linel[2:len(linel)-2] :
             # this is MINUS 2 because the second-to-last column is MAX and should not be summed
             # with the others 
-
                 try : 
-                    frac_counts.append(int(c))
+                    frac_counts.append(int(float(c)))
                 except ValueError : 
                     frac_counts.append(0)
 
@@ -567,7 +566,7 @@ class MSdata(object) :
             elif d is self.bait :
                 print( 'skip bait: ' + d.official )
                 pass 
-            else : 
+            else :
                 bw += p(d)/eidlens[d]; 
 
         self.pseudo = 1.0 / bw / PSEUDO_LENGTH 
