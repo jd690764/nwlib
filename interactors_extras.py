@@ -1258,7 +1258,7 @@ def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
     #       ek --> preysymbol
     #       ek --> meanscore
     #       preysybmbol --> meanscore
-    
+
     ek_ps = dict()
     ek_ms = dict()
     ps_ms = dict()
