@@ -867,7 +867,9 @@ class dataSet(object):
 
             # skip all commented lines ; first uncommented line is header
             if dataline[0] == '#' : 
-                continue
+                dataline = infobj.readline() ;
+                i       += 1;
+                continue ;
             
             node_was_filtered = False
             dataline          = dataline.strip()
