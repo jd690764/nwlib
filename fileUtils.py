@@ -16,7 +16,8 @@ def findURL( url, diry, pattern ):
     dlfile     = None
     
     try:
-        rfiles = ftp.mlsd()
+        #rfiles = ftp.mlsd() # this did not work
+        rfiles = ftp.nlst()
     except ftplib.error_perm as resp:
         if str(resp) == "550 No files found":
             print( "No files in this directory" )
