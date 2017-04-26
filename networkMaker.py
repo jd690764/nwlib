@@ -16,7 +16,7 @@ from lib import rbase
 from lib.markutils import b4us,afterus
 from lib import config as cf
 from lib import utils
-
+import getpass
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -27,6 +27,8 @@ config       = { 'ifiles' : cf.ifilesPath,
                  'youtfilename' : '',
                  'outfilename'  : '',
                  'rescue_f'     : None }
+
+scruser      = getpass.getuser()
 
 def tokey_single(c, s) :
     if c['organism'] == 'human':
@@ -101,9 +103,10 @@ def readYAMLfile( yamlfile, c ) :
     c['rescueNetWide'] = yout['options'].get('network-wide_degree',False)
     c['rescueLocal']   = yout['options'].get('rescue_local', False)
     c['rescueByComp']  = yout['options'].get('rescue_by_complex',False)
+    c['rescueAll']     = yout['options'].get('rescue_all', False)
     c['public_dicts']  = yout['public']
     # this should be a list of dicts
-    # each dict (1/public file) should have the fields : infilename qualify convert misncore minweight
+    # each dict (1/public file) could have the fields : infilename qualify convert misncore minweight bait [] radius 
     # public datasets have NO baits, are NOT DIRECTED, and are NEVER compared to negative controls
 
     if type(c['valid_quals']) is list : 
@@ -145,11 +148,11 @@ def readInDatasets( nwdata, c, dict_to_use, keys ):
             continue
         
         if dsd.get('convert') == 'm2h' : 
-            nwdata.parse( dsf, fd = I.fdms, m2h = True, qualify = dsd.get('qualify',''), directed = True )
+            nwdata.parse( dsf, fd = I.fdms, m2h = True, qualify = dsd.get('qualify',''), directed = True, user = scruser )
         elif dsd.get('convert') == 'h2m' : 
-            nwdata.parse( dsf, fd = I.fdms, h2m = True, qualify = dsd.get('qualify',''), directed = True )
+            nwdata.parse( dsf, fd = I.fdms, h2m = True, qualify = dsd.get('qualify',''), directed = True, user = scruser )
         else : 
-            nwdata.parse( dsf, fd = I.fdms, qualify = dsd.get('qualify',''), directed = True )
+            nwdata.parse( dsf, fd = I.fdms, qualify = dsd.get('qualify',''), directed = True, user = scruser )
 
         k = tokey(c, dsd['bait'])
         if type(k) is list: 
@@ -192,8 +195,27 @@ def store_first_pass_data( nwdata, c, strong_hits, weak_hits ):
     c['joint_hits']        = joint_hits
     c['node_pass1_all']    = node_pass1_all
     c['node_pass1_strong'] = node_pass1_strong
-    
 
+def trim( nw, nodes = [], rad = 1 ) :
+
+    final_edge_set          = set()
+
+    if len(nodes) > 0 and rad >= 1:
+        base_node_set       = set( nodes )
+        final_node_set      = base_node_set.copy()
+        while rad > 0:
+            final_node_set |= {e.whence.official for e in nw.edges.values() if e.to.official in base_node_set }
+            final_node_set |= {e.to.official for e in nw.edges.values() if e.whence.official in base_node_set }
+            rad             = rad -1
+            base_node_set   = final_node_set.copy()
+
+        #print( 'nodes: ' + '+'.join(nodes) + '\n')
+        #print( 'final_node_set: ' +  '+'.join(map(str, list(final_node_set)[0:10])))
+        #print( 'edge_values: ' + '+'.join(map(str, list({e.to.official for e in nw.edges.values()})[0:10])) + '\n')
+        final_edge_set     = {e for e in nw.edges.values() if {e.to.official,e.whence.official}.issubset(final_node_set) }
+        #print('edges in set: ' + str(len(final_edge_set)))
+    return final_node_set
+    
 def readPublicDatasets( nwdata, c ):
 
     # OK, NOW we dump in the public datasets
@@ -210,24 +232,33 @@ def readPublicDatasets( nwdata, c ):
         temporaryds = I.dataSet( i_filter = c['iact_filter'], debug = DB )
         if pd.get('convert') == 'm2h' : 
             temporaryds.parse( pdsf, fd = I.fd_biogrid, m2h = True, qualify = pd.get('qualify',''),
-                               directed = False, force_qualify = True )
+                               directed = False, force_qualify = True, user = scruser )
         elif pd.get('convert') == 'h2m' : 
             temporaryds.parse( pdsf, fd = I.fd_biogrid, h2m = True, qualify = pd.get('qualify',''),
-                               directed = False, force_qualify = True )
+                               directed = False, force_qualify = True, user = scruser )
         else :
             temporaryds.parse( pdsf, fd = I.fd_biogrid, qualify = pd.get('qualify',''),
-                               directed = False, force_qualify = True )
+                               directed = False, force_qualify = True, user = scruser )
+
+        sio = StringIO()
 
         print( 'saving public dataset' + pd['infilename'])
-        sio = StringIO()
-        temporaryds.save( sio, edges = { e for e in temporaryds.edges.values() 
-                                         if e.weight >= pd.get('minweight',0) and e.totalscore >= pd.get('minscore',0) });
+        # filter nodes of the dataset if bait is defined
+        if 'bait' in pd:
+            node_set = trim( temporaryds, pd.get('bait'), pd.get( 'radius', 1 ))
+            temporaryds.save( sio, nodes = node_set );
+        else :
+            edge_set =  { e for e in temporaryds.edges.values() if e.weight >= pd.get('minweight',0) and e.totalscore >= pd.get('minscore',0) }
+            temporaryds.save( sio, edges = edge_set );
+
         sio.seek(0)
         print( 'import public data into network ' )
-        nwdata.load_from( sio )
+        nwdata.load_from( sio, scruser )
         sio.close()
         pdsf.close()
-
+        #temporaryds.save( cf.djPath + 'tmp/adcy3_tmp.txt', edges = edge_set );
+        #print('number of nodes: ' + str(len([n for n in nwdata.nodes])))
+        
 def networkwideRescue( edgeset, c ):
     # network-wide degree rescue
     # this block puts all edges with appropriate quals in the 
@@ -302,11 +333,11 @@ def secondaryFiltration( nwdata, c ):
 
     # vet every node in the network
     for nk in c['node_pass1_all'] :
-
+            
         if nk in c['node_pass1_strong'] :
             # keep node if it passed strong filter
             nodes_pass2.add(nk)
-
+            
         elif b4us(nk) in rescued or afterus(nk) in rescued :
             # keep the node if it is on the rescue list:
             nodes_pass2.add(nk)
@@ -333,8 +364,7 @@ def secondaryFiltration( nwdata, c ):
             # keep the node if it has at least 'rescue_deg' neighbors that themselves
             # bind a bait with edges within 'edges_pass1'
             # call this 'local rescue'
-            edges_this_node = { e.key for es in nwdata.nodes[nk].edges.values() for e in es }\
-                & ( c['edges_pass1'] | c['reinforcing_edges'] ); 
+            edges_this_node = { e.key for es in nwdata.nodes[nk].edges.values() for e in es } & c['edges_pass1']
             # possibly ok edges
             vqe = networkwideRescue( edges_this_node, c )
             for bk in c['baitkeys'] : 
@@ -356,11 +386,10 @@ def secondaryFiltration( nwdata, c ):
     for bk in c['baitkeys'] : 
         if bk in nwdata.nodes:
             real_partners_this_node = { nk for nk in nodes_pass2 \
-                                        if nwdata.nodes[bk].binds( nk, within_edge_set = c['edges_pass1'] | c['reinforcing_edges']) }
+                                        if nwdata.nodes[bk].binds( nk, within_edge_set = c['edges_pass1'] ) }
             real_partners_this_node.add(bk)
 
-            edges_pass2    |= { e for e in c['edges_pass1'] | c['reinforcing_edges']
-                                if {e.to.key,e.whence.key}.issubset(real_partners_this_node) }
+            edges_pass2    |= { e for e in c['edges_pass1'] if {e.to.key,e.whence.key}.issubset(real_partners_this_node) }
         else:
             print( bk + ' is not among the network nodes!' )
             
@@ -373,6 +402,19 @@ unitransform = lambda x : 7.0 if x==0.0 else -1 * np.log10(x)
 
 def makeOutput( nwdata, c ):
 
+    if not 'edges_pass2' in c:
+        c['edges_pass2'] = { e for e in nwdata.edges.values() }
+
+    if not 'nodes_pass2' in c:
+        c['nodes_pass2'] = { e for e in nwdata.nodes.values() }
+
+    if not 'nnodes_rescued' in c:        
+        c['nnodes_rescued'] = 0
+
+    if not 'edges_pass1' in c:
+        c['edges_pass1'] = { e for e in nwdata.edges.values() }
+
+        
     ie.print_springs( c['edges_pass2'], print_headers = True, print_weights = True, transform_scores = unitransform,
                       print_quals = True, fname = c['outfilename'] ,print_pps=True, print_bkg = False )
 
@@ -577,7 +619,8 @@ def createNetwork( yamlfile ) :
         config['node_pass1_strong'] = set(theds.nodes.keys())
 
     readPublicDatasets( theds, config )
-    secondaryFiltration( theds, config )
+    if not config['rescueAll']:
+        secondaryFiltration( theds, config )
     makeOutput( theds, config )
     
     return theds,config
