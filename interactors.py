@@ -11,7 +11,6 @@ from lib import markutils as mu
 from lib import rbase
 from lib import filters
 
-
 # note that field dictionaries still need to include things like entrezA. HOWEVER, some field information is exclusive to interactions and others are exclusive to nodes
 
 # in different field times, which columns(in order) map to which fields of interaction
@@ -844,7 +843,7 @@ class dataSet(object):
         logger.debug("Completed.") ;
         
     def parse( self, infobj, sep = '\t', fd = None, h2m = False, m2h = False, directed = False, qualify = '',
-               force_qualify = False, force_score = None ) :
+               force_qualify = False, force_score = None, user = None ) :
 
         if type(infobj) is str : 
             infobj=open(infobj) ;
@@ -915,6 +914,7 @@ class dataSet(object):
 
                     if self._add_node( new_node ):
                         added_nKeys.add( new_node.key )
+                        print(new_node.key + ' ' + str(new_node.organism))
                     else:
                         node_was_filtered = True
 
@@ -945,14 +945,16 @@ class dataSet(object):
 
             dataline = infobj.readline() ;
             i       += 1;
-            mu.waitbar( 80 * i / filelines, 80, showPct = True, fill = '%' )
-            sys.stdout.flush()
+            if not user == 'apache': 
+                mu.waitbar( 80 * i / filelines, 80, showPct = True, fill = '%' )
+                sys.stdout.flush()
             
         if (self.debug):
             sys.stderr.write("\nCompleted.\n")
-        else : 
-            mu.waitbar( 80, 80, fill = '%', showPct = True )
-            sys.stderr.write('\n')
+        else :
+            if not user == 'apache':             
+                mu.waitbar( 80, 80, fill = '%', showPct = True )
+                sys.stderr.write('\n')
 
 
     def save(self, f, nodes = None, edges = None):
@@ -1001,7 +1003,7 @@ class dataSet(object):
                     pass ; 
 
 
-    def load_from( self, infobj ) :
+    def load_from( self, infobj, user ) :
         """
             reading in a network file saved using the above 'save' method
             nodes and interactions are separated by an emtpy line
@@ -1064,7 +1066,8 @@ class dataSet(object):
             
             i   += 1
             s    = infobj.readline()
-            mu.waitbar( 80 * i / filelines, 80, showPct = True )
+            if not user == 'apache':
+                mu.waitbar( 80 * i / filelines, 80, showPct = True )
 
         infobj.close()
 
@@ -1265,7 +1268,7 @@ def convert_node(n, from_taxid, to_taxid, conv, targ ) :
             else :
                 # pick target - the smallest entrezid                
                 target_entrez = str(sorted(map(int, conv.get(n.entrez)))[0])
-
+                
             sys.stderr.write('\rWARNING: Interactors.convert_node :'
                              +' {}:{} is not the unique homolog of {}:{}.\n'
                              .format( target_entrez, targ['EID'][target_entrez]['Symbol'],
@@ -1274,11 +1277,16 @@ def convert_node(n, from_taxid, to_taxid, conv, targ ) :
         else:
             # one to one mapping
             target_entrez = next(iter(conv[n.entrez])) ;
-
+            
         if target_entrez :
             n.official = targ['EID'][target_entrez]['Symbol']
             n.organism = to_taxid
             n.entrez   = target_entrez
             n.key      = n.official+'_'+n.entrez
 
+        else :
+            sys.stderr.write('\rWARNING: Interactors.convert_node :'
+                             +' {}:{} could not be converted.\n'
+                             .format( n.entrez, n.official ))            
+            
     return n ; 
