@@ -3,7 +3,11 @@ from subprocess import check_output as co
 from subprocess import CalledProcessError 
 from os import environ 
 
+from lib import config as cf
+
+environ['BLASTDB'] = cf.BLASTDB
 CDTRACK=environ['BLASTDB'] ;
+
 def tocsl(acclist) : 
     out='' ; 
     for acc in acclist[1:len(acclist)] : 
