@@ -15,6 +15,7 @@ import lib.engarde as E
 import lib.rbase as rb
 import lib.filters as flt
 import pandas as pd
+from lib import config as cg
 
 from network.models import Entrez, Ncbiprot
 
@@ -613,7 +614,8 @@ class MSdata(object) :
             d.setOfficial( sym )
             d.setEntrez( entrez )    
             d.setOrganism( org )
-
+            
+        dupConvert( cg.filesDict['duptxt'] ) 
 
     def save(self,fname="",bait=None,concatenate=True,m2h=False,h2m=False,debug=False,no_zeros=True) :
         #nb that asMouse trumps asHuman
@@ -996,8 +998,8 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
     elif tryhard and ms : 
         try : 
-            swacc,seq     = E.fetchSw(ms.group(1),asTuple=True) 
-            pepacc        = pep.bestPep(seq,db=bestpepdb) 
+            swacc,seq     = E.fetchSw(ms.group(1),asTuple=True)
+            pepacc        = pep.bestPep(seq,db=bestpepdb)
             sym           = reference['peptide'][pepacc]['Symbol'] 
             entrez        = reference['peptide'][pepacc]['EID'] 
             org           = reference['peptide'][pepacc]['Taxon'] 
@@ -1075,3 +1077,13 @@ def eidLen( eid, org, suppress = True ) :
         sys.stderr.write('NOTE: No satisfactory peptide accessions for eid {}, using average length of 375.\n'.format(eid)) 
 
     return PSEUDO_LENGTH
+
+def dupConvert( outfile ):
+
+    # read in dup structure
+    dup = rb.dup
+    fh  = open( outfile, 'wt' )
+    for k in dup:
+        eid = dup[ k ] [ 1 ]
+        fh.writelines( k + "\t" +  eid + "\n" )
+    fh.close( )
