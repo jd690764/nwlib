@@ -274,7 +274,9 @@ class MSdata(object) :
         # to protein worksheet
         # identifiers in col 2, # of spectra in column 6 (0-indexed)
 
-        for row in ws.rows[1:] : 
+        for row in ws.rows : 
+            if str(row[0].value).startswith('Protein'):
+                continue
 
             entrez, sym, org = desc_interpreter( row[1].value, tryhard = True, bestpepdb = bestpepdb, reference = reference ) 
 
