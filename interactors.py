@@ -916,7 +916,7 @@ class dataSet(object):
 
                     if self._add_node( new_node ):
                         added_nKeys.add( new_node.key )
-                        print(new_node.key + ' ' + str(new_node.organism))
+                        #print(new_node.key + ' ' + str(new_node.organism))
                     else:
                         node_was_filtered = True
 
