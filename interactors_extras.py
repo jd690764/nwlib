@@ -830,21 +830,19 @@ def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_we
 
     def spring_transform(edge) : 
 
-        if edge.qual in {'em', 'Emili'} : 
+        if edge.qual.lower() in {'em', 'emili', 'complexes'} : 
+            #print( edge.qual.lower() + '10')
             return 10  ;
-        elif edge.qual in {'BioGRID'}:
+        elif edge.qual.lower() in {'biogrid', 'bg', 'bp', 'bioplex', 'hippie'}:
+            #print( edge.qual.lower() + '1')            
             return 1
-        elif edge.qual in {'wt', 'mut', 'isoform' }:
-            return 5
-        elif edge.qual not in {'bg','bp'} : 
-            #return 8.5 - np.log10(e.meanscore) ; 
-            return 1 ; 
-        else : 
-            return 5
+        else:
+            #print(str(8.5+round(np.log10(edge.meanscore), 2)))
+            return 8.5 + round(np.log10(edge.meanscore), 2) 
 
     if ( not fname ) :
         f = sys.stdout
-    else : 
+    else :
         f = open(fname,"w") ; 
 
     if ( print_headers) :
@@ -932,7 +930,7 @@ def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_we
 
     f.close()
 
-
+    
 def dombuddies(infile,keys,debug=False,rooted=False) : 
     warn(DeprecationWarning('I (Mark) can\'t vouch for dombuddies right now 3/1/2016') )
     #import rbase
@@ -1257,7 +1255,7 @@ def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
 
     #       ek --> preysymbol
     #       ek --> meanscore
-    #       preysybmbol --> meanscore
+    #       preysymbol --> meanscore
 
     ek_ps = dict()
     ek_ms = dict()
@@ -1267,24 +1265,51 @@ def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
         if qual and e.qual != qual : 
             if debug : 
                 sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-                ' skipped due to invalid qualifier\n'+e.qual) ;
+                                 ' skipped due to invalid qualifier: '+qual + '\n') ;
             continue ; 
-        if directed and e.to.key == baitkey : 
+        elif directed and e.to.key == baitkey : 
             if debug : 
                 sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
                 ' skipped due to wrong direction\n') ;
             continue ;
-
-        # for the reason behind this constant, cf 
-        # https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation
-        ek_ps.update({ e.key : e.to.official })
-        ek_ms.update({ e.key : np.log10(e.meanscore) }) ;
-        ps_ms.update({ e.to.official : np.log10(e.meanscore) })
+        else:
+            # for the reason behind this constant, cf
+            # https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation
+            if debug : 
+                sys.stderr.write( 'keep this edge: ' + e.key + '\n')
+            ek_ps.update({ e.key : e.to.official })
+            ek_ms.update({ e.key : np.log10(e.meanscore) }) ;
+            ps_ms.update({ e.to.official : np.log10(e.meanscore) })
 
     return ( ek_ps, ek_ms, ps_ms )
 
 def mad(series) : 
-    return np.percentile(np.abs(series-np.percentile(series,50)),50) ; 
+    return np.percentile(np.abs(series-np.percentile(series,50)),50) ;
+
+def read_control_data( ctrl_fname, debug  ):
+    # read in control file
+    
+    if not os.path.isfile(ctrl_fname) and not os.path.isfile(CONTROL_FILES + ctrl_fname) :
+        raise FileNotFoundError('Could not find '+ctrl_fname) ;
+    elif os.path.isfile(CONTROL_FILES + ctrl_fname) : 
+        fn = CONTROL_FILES + ctrl_fname ; 
+    else : 
+        fn = ctrl_fname ;
+
+    # if the reference file is just a list of .i files, create the pickled datafile
+    if re.match( '.*\.txt$', fn ):
+        fn = createReferenceFile( fn )
+
+    with open(fn,'rb') as f : 
+        ( allsyms, allfns, loggrid ) = pickle.load(f) ;
+
+    if debug :
+        sys.stderr.write( 'DEBUG> interactors_extras.madfilter_corr : control fname is ' + fn + '\n' )
+        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : control\n'+
+                         '        syms: '+str(len(allsyms))+' files: '+str(len(allfns))+'\n') ;
+
+    return( allsyms, allfns, loggrid )
+        
     
 def madfilter_corr( dataset,                # network dataset to process, interactors.dataSet instance
                     ctrl_fname,             # control file name to use, pickled syms,medians mads (*.cp2))
@@ -1296,7 +1321,6 @@ def madfilter_corr( dataset,                # network dataset to process, intera
                     alpha    = 0.05,        # fwer or fdr deepending on method
                     debug    = False,       #
                     maxcorr  = 0.75,        #
-                    floor    = 2 ,          # 
                     method   = 'fdr_bh',    # method for multiple hypothesis testing correction
                     assign_edge_ps  = True  # whether or not to modify 'p' attribute of tested edges
 ) : 
@@ -1309,57 +1333,22 @@ def madfilter_corr( dataset,                # network dataset to process, intera
         baitkey : key of bait
     """
 
-    # read in control file
-    if not os.path.isfile(ctrl_fname) and not os.path.isfile(CONTROL_FILES + ctrl_fname) :
-        raise FileNotFoundError('Could not find '+ctrl_fname) ;
-    elif os.path.isfile(CONTROL_FILES + ctrl_fname) : 
-        fn = CONTROL_FILES + ctrl_fname ; 
-    else : 
-        fn = ctrl_fname ;
-
-    # if the reference file is just a list of .i files, create the pickled datafile
-    if re.match( '.*\.txt$', fn ):
-        fn = createReferenceFile( fn )
-        
-    if debug :
-        sys.stderr.write( 'DEBUG> interactors_extras.madfilter_corr : \n    baitkey=' + baitkey + '\n    qual=' + qual + '\n' )
-        sys.stderr.write( 'DEBUG> interactors_extras.madfilter_corr : control fname is ' + fn + '\n' )
-
-    with open(fn,'rb') as f : 
-        ( allsyms, allfns, loggrid ) = pickle.load(f) ;
-
-    if debug :
-        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : control\n'+
-                         '        syms: '+str(len(allsyms))+' files: '+str(len(allfns))+'\n') ;
-
+    ( allsyms, allfns, loggrid ) = read_control_data( ctrl_fname, debug )
     symset      = set(allsyms) ; 
     pseudoindex = allsyms.index('PSEUDO') ;
-    pseudoscore = dataset.nodes[baitkey].edges.get('PSEUDO_00', PSEUDO_DEFAULT)
-    length      = 1
-    if not type( pseudoscore ) is float:
-        pseudoscore = np.log10(np.mean([ e.meanscore for e in dataset.nodes[baitkey].edges.get('PSEUDO_00', PSEUDO_DEFAULT) ]))
-        length      = len([ e.meanscore for e in dataset.nodes[baitkey].edges['PSEUDO_00'] ])
-    else:
-        pseudoscore = np.log10( pseudoscore )
-        
-    pseudofloor = np.log10(floor) + pseudoscore ;
+    #pseudoscore = dataset.nodes[baitkey].edges.get('PSEUDO_00', PSEUDO_DEFAULT)
+    idstr       = baitkey + '>' + 'PSEUDO_00' + ':' + qual
+    pseudoscore = dataset.edges[idstr].meanscore if idstr in dataset.edges else PSEUDO_DEFAULT
+    pseudoscore = np.log10( pseudoscore )
     
-    if debug : 
-        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr :\n'+\
-        '        pseudoscore for these tests is {:8.3}\n'.format(pseudoscore)+\
-        '        giving score threshold -log_10('+repr(floor)+')* <pseudoscore> = '+\
-        '{:8.6}'.format(pseudofloor)+'\n'+\
-        'from '+repr(length)+'pseudocounts.\n')
-
     if not as_dict : 
         outedges = set() ;
 
     # this loop now does X things : 
     #   1) get a vector of scores to test
     #       -specified by bait, direction, qual
-    #       -score is above -log10(floor) + -log10(pseudocount) 
     #   2) put those scores into dicts :
-    
+
     ek_ps, ek_ms, ps_ms = dataset_edges_for_bait( dataset, baitkey, qual, directed, debug )
 
     # NEXT : remove datasets from background that are highly correlated with the query dataset
@@ -1390,11 +1379,6 @@ def madfilter_corr( dataset,                # network dataset to process, intera
 
     for ek in ek_ps.keys() :
         e = dataset.edges[ek] ;
-        if ek_ms[ek] < pseudofloor :
-            if debug : 
-                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-                ' skipped due to score {:8.6} below pseudofloor {:8.6}\n'.format(ek_ms[ek],pseudofloor)) ;
-            continue ;
 
         if e.to.official not in symset : 
             madscore = (ek_ms[ek]- np.median(compgrid[pseudoindex,:])) / mad(compgrid[pseudoindex,:])/ 1.48 ;
