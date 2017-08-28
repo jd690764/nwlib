@@ -28,14 +28,17 @@ tremblre      = re.compile(r'.*tr\|([^\|]{6})\|.*')
 swisspre      = re.compile(r'.*sp\|([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})\|.*', re.IGNORECASE ) 
 entrezre      = re.compile(r'.*ref\|([\d]+)\|.*') 
 symbolre      = re.compile(r'.*GN=([A-Za-z0-9]*).*') 
-proteinre     = re.compile(r'.*ref\|([ANYXZ]P_\d+)\.?\d{0,2}\|.*') 
-idrevs        = re.compile(r".*>rev.*|.*>r-.*",re.IGNORECASE)
+#proteinre     = re.compile(r'.*ref\|([ANYXZ]P_\d+)\.?\d{0,2}\|.*')
+proteinre     = re.compile(r'.*([ANYXZ]P_\d+)\.?\d{0,2}.*') 
+idrevs        = re.compile(r".*>rev.*|.*>r-.*|.*\*rev\*.*",re.IGNORECASE)
 getgn         = re.compile(r".* GN=([A-Za-z0-9_.-]*).*")
 getos         = re.compile(r".* OS=([A-Za-z0-9 ()-]*) ..=.*") 
 contam        = re.compile(r".*contam.*|.*>uc.*",re.IGNORECASE)
 wastrd        = re.compile(r".*truncate.*",re.IGNORECASE)
 spacc         = re.compile(r".*sp\|(.*)\|.*",re.IGNORECASE)
 entrezh       = re.compile(r'.*gi\|.*',re.IGNORECASE) 
+uprotre       = re.compile(r'.*(sp|tr)(\|[a-z0-9]+\|[a-z0-9]+_(human|mouse))', re.IGNORECASE)
+refseqre      = re.compile(r'.*ref\|([AXNYZ]P_\d+\.\d+)', re.IGNORECASE)
 
 
 # IMPORTANT : What type of file should you run this on ? 
@@ -210,7 +213,10 @@ class MSdata(object) :
         maxCt      = 0 
         for line in f :
             linel    = line.strip().split(sep)
-            thisdesc = linel[1]
+            try :
+                thisdesc = linel[1]
+            except :
+                continue
 
             if contam.match(thisdesc) :
                 continue
@@ -218,14 +224,14 @@ class MSdata(object) :
             ###### handle when linel[2] =='NaN' RESUME
             try :
                 frac_counts = [ int(linel[2]) ]
-            except ValueError : 
+            except (ValueError, IndexError) as e : 
                 frac_counts = [0] 
 
             if ( idrevs.match(thisdesc) ) :
                 isReverse   = True 
             else :
                 isReverse   = False 
-
+                    
             if ( unTruncate and not isReverse and wastrd.match(thisdesc)) :
                 sys.stderr.write("WARNING:   Description line\n{}\n seems to have been truncated.\n".\
                  format(thisdesc))
@@ -369,10 +375,9 @@ class MSdata(object) :
         head   = head[0:(ind - 1)] # keep only important column names
         head.append( 'SUM' )
         rows   = [] # collect rows 
-
         for line in f :
             # skip last line and some other junk
-            if not re.search( '^("?Total|\s|NaN).*', line ):
+            if not re.search('^\s*$', line) and not re.search( '^("?Total|\s|NaN).*', line ):
                 # replace '.' with NaN in values
                 line     = re.sub( '\t\s*\.', '\tNaN', line )
                 linel    = line.strip().split(sep)
@@ -387,12 +392,13 @@ class MSdata(object) :
 
                 lined = dict(zip(head, linel[0:ind]))
                 rows.append( lined ) # list of dictionaries (of rows)
+            elif re.search('^\s*$', line):
+                break
 
         tble           = pd.DataFrame(rows) # convert rows into pandas table
         tble[['SUM']]  = tble[['SUM']].apply(pd.to_numeric) # change sum col to numeric
         tble.sort_values( 'SUM', inplace = True, ascending = False ) # sort on the sum column
         tble.index     = range(1, len(tble.index)+1) # rename rows to reflect current order
-
         tble.to_csv(fsum, sep = '\t', index_label = 'Rank Number', columns = head ) # write out file
 
         # now the file should be in SUMS format ...
@@ -619,7 +625,7 @@ class MSdata(object) :
             
         dupConvert( cg.filesDict['duptxt'] ) 
 
-    def save(self,fname="",bait=None,concatenate=True,m2h=False,h2m=False,debug=False,no_zeros=True) :
+    def save(self,fname="",bait=None,concatenate=True,m2h=False,h2m=False,debug=False,no_zeros=True, covfile = None ) :
         #nb that asMouse trumps asHuman
 
         def orgconvert(eid,converter) : 
@@ -642,6 +648,15 @@ class MSdata(object) :
 
             return (weid,worg,woff) 
 
+        # if exist, include protein coverage data into the ifile
+        coverage = dict()
+        if not covfile == None:
+            with open(covfile, 'rt') as cfile:
+                for line in cfile:
+                    if line.startswith('symbol'):
+                        continue
+                    linel = line.rstrip().lstrip().split('\t')
+                    coverage[linel[0]] = [linel[3], linel[4]] # coverage and number of unique peptides
             
         if bait is None : 
             bait=self.bait 
@@ -694,8 +709,6 @@ class MSdata(object) :
         else : 
             outData=self.fwdata 
 
-
-
         if ( not fname ) :
             outfile=sys.stdout
         else :
@@ -740,6 +753,10 @@ class MSdata(object) :
                     weid=d.entrez 
 
             notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid, worg ))+'_raw_'+repr(d.totalcounts) 
+            if woff in coverage:
+                cov_v = '-1' if coverage[woff][0] == '' else str(round(float(coverage[woff][0]),2))
+                notestring = notestring + '_cov_' + cov_v + '_upept_' + str(coverage[woff][1])
+
             score      = "{0:.20f}".format(d.score)
             outfile.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(\
              self.name+'_'+str(d.idn),baitSym,woff,score,baitOrg,worg,baitEnt,weid,self.name,\
@@ -802,8 +819,34 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         if faildesc in rb.dup : 
             if debug : 
                 sys.stdout.write('Description in rbase.dup.\n')
-            return rb.dup[ faildesc ] 
+                print(str(rb.dup[ faildesc ]))
+            return rb.dup[ faildesc ]
 
+        up  = uprotre.match( faildesc )
+        if not up == None:
+            up = up.group(2)
+        ref = refseqre.match( faildesc )
+        if not ref == None:
+            ref = ref.group(1)
+
+        noquote = faildesc.lstrip(' \'"').rstrip(' "\'')[:100]
+        noquote = re.escape( noquote )
+                
+        found = None
+        for test in [ noquote, ref, up ]:
+            if test == None or test == '':
+                continue
+
+            hits  = [k for k in rb.dup if re.search( test, k)]
+            if len(hits) > 0:
+                found = rb.dup.get( hits[0] )
+                if debug : 
+                    sys.stdout.write('Description in rbase.dup.\n')
+
+                rb.dup.update({ faildesc : found })
+                rb.update_dup( rb.dup )                    
+                return found
+        
         sys.stderr.write("\nDATASET: Provided description \n\t'{}'\n  cannot be mapped to any entrez entry.".format(faildesc ));
 
         result = ()
@@ -831,7 +874,6 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             sys.stderr.flush()
             result = ( '00', fetchedSym, '00' )  
 
-        print('updated dup1: ' + desc + ' - ' + repr(result))            
         rb.dup.update({ desc : result })
         rb.update_dup( rb.dup )    
             
@@ -905,7 +947,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         
     mid     = dict() 
     fromall = list() 
-
+    
     # concatenate all possible entries found
     for caught in [ froment, fromsym, fromsym, fromswp, fromtre, fromsyn, frompep ]  :
         # fromsym appears twice deliberately -- the symbol should be given
@@ -986,17 +1028,16 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
         elif tryhard and mp : 
             try :
                 rec       = E.fetchPR(mp.group(1))
-                sym       = E.PRgetSym(rec) 
-                entrez    = E.PRgetEID(rec) 
-                org       = E.PRgetOrg(rec) 
+                if not rec == None:
+                    sym       = E.PRgetSym(rec) 
+                    entrez    = E.PRgetEID(rec) 
+                    org       = E.PRgetOrg(rec) 
             except (KeyError,ValueError,IOError) : 
                 pass 
 
         else:
             (entrez,sym,org) = refertouser(desc)
 
-#            if mt and mt.group(1) and entrez != '00' and org != '00'  : 
-#                rb.dup.update({ desc : (entrez,sym,org) }) 
 
     elif tryhard and ms : 
         try : 
@@ -1017,33 +1058,31 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             org           = reference['peptide'][pepacc]['Taxon'] 
         except (KeyError,ValueError,IOError) :
             (entrez,sym,org) = refertouser(desc)
-            #rb.dup.update({ desc : (entrez,sym,org) })
-            #print('updateing dup2' )
-            #rb.update_dup( rb.dup )
+
     elif tryhard and mp : 
         try :
             rec=E.fetchPR(mp.group(1))
-            if int(E.PRgetEID(rec)) not in reference['eid'].keys() : 
-                if debug :
-                    sys.stderr.write("DEBUG:   remotely matched description :\n    {}\n"\
-                     .format(desc) +\
-                    "        but it could not be mapped to current reference.\n")
-                pass 
-            else : 
-                sym    = E.PRgetSym(rec) 
-                entrez = E.PRgetEID(rec) 
-                org    = E.PRgetOrg(rec) 
+            if not rec == None:
+                if int(E.PRgetEID(rec)) not in reference['eid'].keys() : 
+                    if debug :
+                        sys.stderr.write("DEBUG:   remotely matched description :\n    {}\n"\
+                         .format(desc) +\
+                        "        but it could not be mapped to current reference.\n")
+                    pass 
+                else : 
+                    sym    = E.PRgetSym(rec) 
+                    entrez = E.PRgetEID(rec) 
+                    org    = E.PRgetOrg(rec) 
 
-                if debug :
-                    sys.stderr.write("DEBUG:   remotely matched description :\n    {}\n"\
-                     .format(desc) +\
-                    "        to EID : {} Symbol : {}\n".format(entrez,sym))
+                    if debug :
+                        sys.stderr.write("DEBUG:   remotely matched description :\n    {}\n"\
+                         .format(desc) +\
+                        "        to EID : {} Symbol : {}\n".format(entrez,sym))
 
         except (KeyError,ValueError,IOError) : 
             pass 
     else :
         (entrez,sym,org) = refertouser(desc)
-        #rbase.dup.update({ desc : (entrez,sym,org) }) 
         
     if not sym or not entrez or not org :
         (entrez,sym,org) = refertouser(desc)
@@ -1051,7 +1090,6 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
     # an initial if/return shoud have caught cases where 'desc' is already in rbase.dup
     if entrez == '00' or entrez in reference['eid'].keys() :
         pass
-        #        rbase.dup.update({ desc : (entrez,sym,org) }) 
 
     return (entrez,sym,org)
 
@@ -1084,8 +1122,7 @@ def dupConvert( outfile ):
 
     # read in dup structure
     dup = rb.dup
-    fh  = open( outfile, 'wt' )
-    for k in dup:
-        eid = dup[ k ] [ 1 ]
-        fh.writelines( k + "\t" +  eid + "\n" )
-    fh.close( )
+    with open( outfile, 'wt' ) as fh:
+        for k in dup:
+            fh.writelines( k + "\t" +  '\t'.join([str(i) for i in dup[k]]) + "\n" )
+
