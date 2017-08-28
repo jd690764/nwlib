@@ -63,6 +63,7 @@ r'HIST.*',\
 r'AKR.*',\
 r'CSNK.*',\
 r'HB[ABGDEZQM][0-9]*',\
+r'HSP.*',
 }
 
 pseudogenes={\

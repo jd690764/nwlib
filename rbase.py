@@ -331,14 +331,14 @@ def load_dompairs() :
    #    else : 
    #        raise IndexError('Supplied eid '+repr(EID)+' could not be found in either conversion dictionary.') ; 
 
-def list_domains(rdict,key,outfields=('Pssm','Name'),root_families=True) : 
+def list_domains(rdict,key,outfields=('Acc','Name'),root_families=True) : 
 
     load('cdd') ; 
 
     global VALID_CDDS ;
 
     if not VALID_CDDS : 
-        VALID_CDDS=set(cdd['ByPssm'].keys()) ; 
+        VALID_CDDS=set(cdd['ByAcc'].keys()) ; 
 
     try :
         int(key) ; 
@@ -349,15 +349,15 @@ def list_domains(rdict,key,outfields=('Pssm','Name'),root_families=True) :
     if root_families : 
         for c in set(rdict[searchkey][key]['CDD']) & VALID_CDDS : 
 
-            sys.stdout.write('\t'.join([cdd['ByPssm'][c]['Root'][of] for of in outfields])) ; 
+            sys.stdout.write('\t'.join([cdd['ByAcc'][c]['Root'][of] for of in outfields])) ; 
             sys.stdout.write('\n') ; 
     else : 
         for c in set(rdict[searchkey][key]['CDD']) & VALID_CDDS : 
 
-            sys.stdout.write('\t'.join([cdd['ByPssm'][c][of] for of in outfields])) ; 
+            sys.stdout.write('\t'.join([cdd['ByAcc'][c][of] for of in outfields])) ; 
             sys.stdout.write('\n') ; 
 
-def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),write=False,symbols=True) : 
+def syms_with_domain(rdict,acc,root_families=True,outfields=(['EID','Symbol']),write=False,symbols=True) : 
     
     load('cdd') ; 
 
@@ -365,15 +365,15 @@ def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),
     outset=set()
 
     if not VALID_CDDS : 
-        VALID_CDDS=set(cdd['ByPssm'].keys()) ; 
+        VALID_CDDS=set(cdd['ByAcc'].keys()) ; 
 
-    if type(pssm) is str : 
-        pssm={pssm} ; 
+    if type(acc) is str : 
+        acc={acc} ; 
 
     if root_families :
         for e in rdict['EID'] : 
             if rdict['EID'][e]['CDD'] is not None and \
-             any([ cdd['ByPssm'][c]['Root']['Pssm'] in pssm for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
+             any([ cdd['ByAcc'][c]['Root']['Acc'] in acc for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
                 if write : 
                     sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
                     sys.stdout.write('\n') ; 
@@ -385,7 +385,7 @@ def syms_with_domain(rdict,pssm,root_families=True,outfields=(['EID','Symbol']),
     else :
         for e in rdict['EID'] : 
             if rdict['EID'][e]['CDD'] is not None and \
-             any([ cdd['ByPssm'][c]['Pssm'] in pssm for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
+             any([ cdd['ByAcc'][c]['Acc'] in acc for c in set(rdict['EID'][e]['CDD']) & VALID_CDDS ]) : 
                 if write : 
                     sys.stdout.write('\t'.join([ rdict['EID'][e][of] for of in outfields ]))
                     sys.stdout.write('\n') ; 
@@ -468,8 +468,8 @@ def domroots(domlist) :
     load('cdd') ; 
 
     for d in domlist : 
-        if d in cdd['ByPssm'] :
-            outset.add( cdd['ByPssm'][d]['Root']['Pssm'] ) ;
+        if d in cdd['ByAcc'] :
+            outset.add( cdd['ByAcc'][d]['Root']['Acc'] ) ;
 
     return outset
 

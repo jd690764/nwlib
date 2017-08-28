@@ -593,8 +593,9 @@ class MSdata(object) :
 
                 for fc in d.fxncounts : 
 
-                    if background_exceeded or fc > self.background.get(d.official) \
-                       or fc > previous_fc :
+                    #if background_exceeded or fc > self.background.get(d.official) \
+                        #or fc > previous_fc : 
+                    if background_exceeded or fc > self.background.get(d.official) :
                         counts_this_gene += fc 
                         background_exceeded =   True
                     else : 
