@@ -536,7 +536,12 @@ def xml2bin( infilename, outfilename, type='pickle', insist_on_living=True)  :
             CDDentries=set() ; 
             for dbitem in element.iterfind('.//Dbtag_db') : 
                 if dbitem.text=='CDD' :
-                    CDDentries.add(dbitem.getparent()[1][0][0].text)  ;
+                    # get domain pssm-id
+                    #CDDentries.add(dbitem.getparent()[1][0][0].text)
+                    # get domain accession
+                    cddacc = dbitem.getparent().getparent().getparent()[1].text
+                    cddacc = re.sub( r'^([^\:]+)\:.*', r'\1', cddacc )
+                    CDDentries.add( cddacc )
 
             if not CDDentries : 
                 newGene.update({ 'CDD' : None }) ; 
