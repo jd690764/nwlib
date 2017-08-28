@@ -17,6 +17,7 @@ from lib.markutils import b4us,afterus
 from lib import config as cf
 from lib import utils
 import getpass
+from shutil import copyfile
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -92,8 +93,8 @@ def readYAMLfile( yamlfile, c ) :
     c['ALPHA_LO']      = yout['options'].get('alpha_lo',0.05)
     c['FLOOR_HI']      = yout['options'].get('floor_hi',4)
     c['FLOOR_LO']      = yout['options'].get('floor_lo',4)
-    c['CORRL_HI']      = yout['options'].get('corrl_hi',70)
-    c['CORRL_LO']      = yout['options'].get('corrl_lo',70)
+    c['CORRL_HI']      = yout['options'].get('corrl_hi',0.70)
+    c['CORRL_LO']      = yout['options'].get('corrl_lo',0.70)
     c['rescue_deg']    = yout['options'].get('degree_to_rescue',1)
     c['valid_quals']   = yout['options'].get('valid_degree_quals',{'wt',})
     c['mt_method']     = yout['options'].get('mt_method','fdr_bh')
@@ -146,13 +147,10 @@ def readInDatasets( nwdata, c, dict_to_use, keys ):
         else :
             # problem
             continue
-        
-        if dsd.get('convert') == 'm2h' : 
-            nwdata.parse( dsf, fd = I.fdms, m2h = True, qualify = dsd.get('qualify',''), directed = True, user = scruser )
-        elif dsd.get('convert') == 'h2m' : 
-            nwdata.parse( dsf, fd = I.fdms, h2m = True, qualify = dsd.get('qualify',''), directed = True, user = scruser )
-        else : 
-            nwdata.parse( dsf, fd = I.fdms, qualify = dsd.get('qualify',''), directed = True, user = scruser )
+
+        convert  = dsd.get( 'convert', None )
+        nwdata.parse( dsf, fd = I.fdms, convert = convert, qualify = dsd.get('qualify',''),
+                      floor = c['FLOOR_HI'], directed = True, user = scruser )
 
         k = tokey(c, dsd['bait'])
         if type(k) is list: 
@@ -169,16 +167,17 @@ def filterNodesByBackground( nwdata, c ):
 
     zfhits_strong          = set( )
     zfhits_weak            = set( )
-    
-    for dsd in c['ds_dicts'] : 
+    #import pickle
+    #pickle.dump(nwdata, open('/usr/local/share/py/djscripts/tmp/nwdata.pk', 'wb'))
+
+    for dsd in c['ds_dicts'] :
+        print(dsd['infilename'])
         zfhits_strong     |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
                                                 qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_HI'],
-                                                floor = c['FLOOR_HI'], maxcorr = c['CORRL_HI'], debug = DB , 
-                                                method = c['mt_method'] )
+                                                maxcorr = c['CORRL_HI'], debug = DB, method = c['mt_method'] )
         zfhits_weak       |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
                                                 qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
-                                                floor = c['FLOOR_LO'], maxcorr = c['CORRL_LO'], debug = DB ,
-                                                method = c['mt_method'] )
+                                                maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] )
 
     store_first_pass_data( nwdata, c, zfhits_strong, zfhits_weak )
     
@@ -218,6 +217,9 @@ def trim( nw, nodes = [], rad = 1 ) :
     
 def readPublicDatasets( nwdata, c ):
 
+    if type(c['public_dicts']) is not list or len(c['public_dicts']) == 0:
+        return True
+
     # OK, NOW we dump in the public datasets
     for pd in c['public_dicts'] :
         # (done) make emili follow biogrid field conventions
@@ -230,14 +232,9 @@ def readPublicDatasets( nwdata, c ):
             pdsf = open(c['publicDatadir'] + pd['infilename'])
 
         temporaryds = I.dataSet( i_filter = c['iact_filter'], debug = DB )
-        if pd.get('convert') == 'm2h' : 
-            temporaryds.parse( pdsf, fd = I.fd_biogrid, m2h = True, qualify = pd.get('qualify',''),
-                               directed = False, force_qualify = True, user = scruser )
-        elif pd.get('convert') == 'h2m' : 
-            temporaryds.parse( pdsf, fd = I.fd_biogrid, h2m = True, qualify = pd.get('qualify',''),
-                               directed = False, force_qualify = True, user = scruser )
-        else :
-            temporaryds.parse( pdsf, fd = I.fd_biogrid, qualify = pd.get('qualify',''),
+        convert     = pd.get('convert', None)
+        
+        temporaryds.parse( pdsf, fd = I.fd_biogrid, convert = convert, qualify = pd.get('qualify',''),
                                directed = False, force_qualify = True, user = scruser )
 
         sio = StringIO()
@@ -402,19 +399,6 @@ unitransform = lambda x : 7.0 if x==0.0 else -1 * np.log10(x)
 
 def makeOutput( nwdata, c ):
 
-    if not 'edges_pass2' in c:
-        c['edges_pass2'] = { e for e in nwdata.edges.values() }
-
-    if not 'nodes_pass2' in c:
-        c['nodes_pass2'] = { e for e in nwdata.nodes.values() }
-
-    if not 'nnodes_rescued' in c:        
-        c['nnodes_rescued'] = 0
-
-    if not 'edges_pass1' in c:
-        c['edges_pass1'] = { e for e in nwdata.edges.values() }
-
-        
     ie.print_springs( c['edges_pass2'], print_headers = True, print_weights = True, transform_scores = unitransform,
                       print_quals = True, fname = c['outfilename'] ,print_pps=True, print_bkg = False )
 
@@ -437,12 +421,19 @@ def makeOutput( nwdata, c ):
 
 def makeSaintInputFiles( nwdata, cdata, c, add_replicate = False ):
 
+    c['interfile'] = re.sub(r'.cyt', r'.inter.txt', c['outfilename'])
+    c['preysfile'] = re.sub(r'.cyt', r'.preys.txt', c['outfilename'])
+    c['baitsfile'] = re.sub(r'.cyt', r'.baits.txt', c['outfilename'])
+    c['listfile']  = re.sub(r'.cyt', r'.list.txt', c['outfilename'])
+    
     inter = dict() # all the interactions to be put in output file
     preys = dict() # all preys in non-control datasets
     baits = dict() # all baits in samples/controls
     numpy.random.seed( 123 )
         
     for dsd in c['ds_dicts'] :
+
+        sample = re.sub(r'.i', r'', dsd['infilename'])
         # the bait_qualify value is going to be the 'bait' 
         baits[ dsd['infilename']] = dsd.get('bait') + '_' + dsd.get('qualify') + "\t" + 'T'
         if add_replicate:
@@ -455,18 +446,20 @@ def makeSaintInputFiles( nwdata, cdata, c, add_replicate = False ):
                 continue
 
             prey = re.sub(r'^(.+)_\d+$', '\\1', e.to.key)
-            sc   = int(sum([ int(re.sub(r'^.+_(\d+)$', '\\1', i.tags)) for i in e.interactions ]) / len(e.interactions))
+            #sc   = int(sum([ int(re.sub(r'^.+_(\d+)$', '\\1', i.tags)) for i in e.interactions ]) / len(e.interactions))
+            sc   = [ int(re.sub(r'^.+_(\d+)$', '\\1', i.tags)) for i in e.interactions if sample in i.interID ]
             aal  = sum([ float(re.sub( r'^.+len_(.+)_raw.*$', '\\1', i.tags )) for i in e.interactions ]) / len(e.interactions)
             i    = dsd['infilename'] + "\t" + dsd.get('bait') + '_' + e.qual + "\t" + prey 
             ir   = dsd['infilename'] + '.r'  + "\t" + dsd.get('bait') + '_' + e.qual + "\t" + prey
-            
-            if sc > 1: # skip preys with spectral count = 1
+
+            #print('+'.join(map(str,sc)) + ' ' + str(type(sc)), sample, str(len(sc)))
+            if len(sc) > 0 and sc[0] > 1: # skip preys with spectral count = 1
                 preys[ prey ]   = aal
                 if i not in inter:
                     inter[ i ]  = list()
                 if add_replicate and ir not in inter:
                     inter[ ir ] = list()
-                inter[ i ].append( sc )
+                inter[ i ].append( sc[0] )
                 if add_replicate:
                     scr = int(numpy.random.normal( sc , 10, size = None))
                     scr = scr if scr > 0 else 0
@@ -497,14 +490,14 @@ def makeSaintInputFiles( nwdata, cdata, c, add_replicate = False ):
             ip   = ckey + "\t" + ckey + "\t" + p 
             if ip not in inter:
                 inter[ ip ] = [ 0 ]
-
-    with open( 'tmp/saint.inter.txt', 'wt') as oh:
+    
+    with open( c['interfile'], 'wt') as oh:
         for k, v in sorted(inter.items()):
             oh.write( k + '\t' + ','.join(map(str, v)) + "\n")
-    with open( 'tmp/saint.preys.txt', 'wt') as oh:
+    with open( c['preysfile'], 'wt') as oh:
         for k, v in sorted(preys.items()):
             oh.write( k + '\t' + str( v ) + "\n")
-    with open( 'tmp/saint.baits.txt', 'wt') as oh:
+    with open( c['baitsfile'], 'wt') as oh:
         for k, v in sorted(baits.items()):
             oh.write( k + '\t' + v + "\n")
             
@@ -521,7 +514,7 @@ def readControls( c ):
     with open( cfile, 'rt' ) as fh:
         for line in fh:
             ifname = line.rstrip()
-            bait   = line.split('_')[0]
+            bait  = line.split('_')[0]
             c_dicts.append( { 'infilename': ifname, 'bait': bait, 'qualify': ifname })
 
     c['c_dicts'] = c_dicts
@@ -558,18 +551,28 @@ def filterSaintData( ds, c, saint, cutoff, cutoff_value, update = False ):
     return selected_edges
                 
 def scoreBySaintx( ds, c ):
-    
+    os.chdir('/usr/local/share/py/djscripts/tmp/')
+
     # network for control experiments
     cntrl = readControls( c )
     # create input files for saintExpress
-    makeSaintInputFiles( ds, cntrl, c, add_replicate = True )
+    makeSaintInputFiles( ds, cntrl, c, add_replicate = False )
     # run saintExpress
-    call( [ 'saintx', 'tmp/saint.inter.txt', 'tmp/saint.preys.txt', 'tmp/saint.baits.txt'] )
+    from subprocess import Popen, PIPE
+
+    p = Popen( [ './../bin/SAINTexpress-spc ' + c['interfile'] + ' ' +  c['preysfile'] + ' ' +c['baitsfile'] ],
+               cwd = '/usr/local/share/py/djscripts/tmp/',
+               stdin=PIPE, stdout=PIPE, stderr=PIPE, shell = True )
+    output, err = p.communicate(b"input data that is passed to subprocess' stdin")
+    rc = p.returncode
+    if( err ):
+        print( 'rc=', str(rc), "\n", output, "\n", err )    
+
     # the output is in the root directory
-    os.rename( 'list.txt', 'tmp/list.txt' )
+    copyfile( 'list.txt', c['listfile'] )
     # read in saint scores
     saint_data = dict()
-    with open( 'tmp/list.txt' ) as lf:
+    with open( c['listfile'] ) as lf:
         for line in lf:
             if re.search( r'^Bait', line ):
                 continue
@@ -619,8 +622,23 @@ def createNetwork( yamlfile ) :
         config['node_pass1_strong'] = set(theds.nodes.keys())
 
     readPublicDatasets( theds, config )
+
     if not config['rescueAll']:
         secondaryFiltration( theds, config )
+
+    else :
+        
+        config['nodes_pass2']    = config['node_pass1_all']
+        config['edges_pass1']    = set()
+
+        for e in list( theds.edges.values()) : 
+            if {e.to.key,e.whence.key}.issubset( config['node_pass1_all'] ) and e.to.key != e.whence.key : 
+                config['edges_pass1'].add(e)
+        
+        config['edges_pass2']    = config['edges_pass1']
+        config['nnodes_rescued'] = 0
+
+    
     makeOutput( theds, config )
     
     return theds,config
