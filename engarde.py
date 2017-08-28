@@ -193,10 +193,15 @@ def fetchPR(qid,currentOnly=True) :
         while tries < 3 :
             try :
                 fetched=Entrez.efetch(db="protein",id=q,rettype='gp',retmode="text") ; 
-                break ; 
-            except IOError : 
-                # a subclass of this error is raised on connection failures
-                tries +=1 ;
+                break ;
+            except urllib.error.URLError as e:
+                #except IOError :
+                if e.code == 400:
+                    print( 'Error: ' + q + '    ' + e.reason + '    ' + str(e.code) )
+                    return None
+                else :
+                    # a subclass of this error is raised on connection failures
+                    tries +=1 ;
         if tries == 3 :
             sys.stderr.write("3 strikes!\n") ; 
             raise ;
@@ -553,11 +558,15 @@ def fetchSw(swiss,asTuple=False,timeout=5) :
     tries=0 ;
 
     while tries < 3 :
-        try : 
+        try :
             ur=urllib.request.urlopen(cf.uniprotUrl+swiss+'.fasta',timeout=timeout) ;
             break ; 
-        except IOError : 
-            tries += 1; 
+        except urllib.error.URLError as e :
+            if e.code == 300:
+                print('Error: ' + cf.uniprotUrl+swiss+'.fasta' + '    ' + e.reason)            
+                return '' if not asTuple else ('', '')
+            else :
+                tries += 1; 
     if tries == 3 : 
         sys.stderr.write("3 strikes!\n") ; 
         raise ; 
