@@ -54,6 +54,7 @@ keyer=lambda x : x.offical + '_' + x.entrez ;
 FORCE_MATCH_QUAL=True
 # I'm not sure why I would ever want this to be false tbh.
 
+PSEUDO_DEFAULT = 1e-5
 #debugout=open('tmp/interactors_dbg_log.txt','w') ; 
 
 def ee(ek1,ek2) : 
@@ -314,44 +315,44 @@ class bgedge(object):
             and updates class attributes accordingly.
         """
 
-        if interaction in self.interactions : 
-            return ; 
+        def interaction_ok_to_add( interaction ):
 
-        if ( not self.to and not self.whence ) :
-            self.whence         = interaction.nodeA ; 
-            self.to             = interaction.nodeB ; 
-        elif not { self.to , self.whence } ^ { interaction.nodeA, interaction.nodeB } : 
-            # symmetric difference is empty ==> no overlap in nodes on this edge w/ incoming interaction
-            pass ; 
-        else : 
-            raise KeyError('Edge\'s nodes are not empty, but incoming interaction\'s nodes do not match.\n') ; 
+            if interaction in self.interactions : 
+                return False 
+            elif self.qual != interaction.qualifications :
+                raise KeyError('Edge\'s and incoming interaction do not have matching qual/qualificaitons.\n') ; 
+            elif ( self.to and self.whence ) and { self.to , self.whence } ^ { interaction.nodeA, interaction.nodeB } :
+                raise KeyError('Edge\'s nodes are not empty, but incoming interaction\'s nodes do not match.\n')
+            elif (not self.directed is None) and self.directed != interaction.directed : 
+                raise ValueError('Edge is directed and incoming interaction is not ,or vice versa.\n')
+            return True
 
-        if self.directed is None : 
-            self.directed   = interaction.directed ; 
-        elif self.directed != interaction.directed : 
-            raise ValueError('Edge is directed and incoming interaction is not ,or vice versa.\n') ; 
-
-        if self.qual != interaction.qualifications : 
-            raise KeyError('Edge\'s and incoming interaction do not have matching qual/qualificaitons.\n') ; 
-
-        self.interactions.add( interaction ) ; 
-        self.weight += 1 ;
-        try :
-            self.totalscore += float(interaction.score) if interaction.score is not None else 0.0 ; 
-            self.meanscore   = self.totalscore / self.weight ;
+        if interaction_ok_to_add( interaction ):
             
-        except ValueError :
-            pass ;
+            self.interactions.add( interaction ) ; 
+            self.weight            += 1 
+            self.determine_origins()
+            
+            # update edge with potential new info
+            if ( not self.to and not self.whence ) :
+                self.whence         = interaction.nodeA ; 
+                self.to             = interaction.nodeB ; 
+            
+            if self.directed is None : 
+                self.directed       = interaction.directed ; 
 
-        if not self.key : 
-            if self.directed  : 
-                edgeicon='>' 
-            else : 
-                edgeicon='^'
-            self.key = self.whence.key + edgeicon + self.to.key + ':' + self.qual
+            try :
+                self.totalscore    += float(interaction.score) if interaction.score is not None else 0.0 ; 
+                self.meanscore      = self.totalscore / self.weight ;
+            
+            except ValueError :
+                pass ;
 
-        self.determine_origins() ;
+            if not self.key : 
+                edgeicon            = '>' if self.directed else '^' 
+                self.key            = self.whence.key + edgeicon + self.to.key + ':' + self.qual
 
+                
     def remove_interaction(self,interaction):
         """
             bgedge.remove_interaction(interaction)
@@ -627,7 +628,8 @@ class dataSet(object):
         """
         if not node.key in self.nodes.keys():
             if self.n_filter and not (self.n_filter and self.n_filter.test( node )):
-                # the node is filtered out
+                if self.debug : 
+                    sys.stderr.write( "DEBUG:   Filtered out node {}.\n".format( node.key ))
                 return False 
             else:
                 if self.debug : 
@@ -636,8 +638,35 @@ class dataSet(object):
                 
         return True
 
+    def _add_new_edge_from_iaction( self, iaction ):
 
-    def _add_interaction( self, iaction ):
+        # create the edge
+        newedge = bgedge( interaction = iaction,
+                          directed    = iaction.directed,
+                          qual        = iaction.qualifications)
+
+        # add it to the dataSet's dict of edges
+        self.edges.update({ newedge.key : newedge }) ;
+                
+        # connect partners of this edge(may be unecessary) ; 
+        newedge.whence.partners.update({ newedge.to.key : newedge.to }) ; 
+        newedge.to.partners.update({ newedge.whence.key : newedge.whence }) ; 
+                
+        if newedge.whence.key not in newedge.to.edges : 
+            newedge.to.edges.update({ newedge.whence.key : { newedge } }) ; 
+        else : 
+            newedge.to.edges[newedge.whence.key].add(newedge) ; 
+                    
+        if newedge.to.key not in newedge.whence.edges : 
+            newedge.whence.edges.update({ newedge.to.key : { newedge } }) ; 
+        else : 
+            newedge.whence.edges[newedge.to.key].add(newedge) ; 
+
+        if self.debug:
+            sys.stderr.write("DEBUG: New edge created for interaction {}.\n".format( iaction.interID))
+
+    
+    def _add_interaction( self, iaction, floor = '' ):
 
         """
             adds a new interaction to the network. Depepends on 
@@ -648,47 +677,36 @@ class dataSet(object):
 
         if self.i_filter and not ( self.i_filter and self.i_filter.test( iaction )):
             if self.debug:
-                #debugout.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
                 sys.stderr.write("DEBUG: Interaction {} excluded after filtering.\n".format( iaction.interID))
             return False
+        elif isinstance( iaction.score, float ) and iaction.nodeA.key != 'PSEUDO_00' and iaction.nodeB.key != 'PSEUDO_00' and iaction.score < floor:
+            if self.debug : 
+                sys.stderr.write('DEBUG: Interaction {}'.format(iaction.interID) +
+                                 'excluded, score is too low: {:8.6}'.format(iaction.score)+'\n')
+            return False        
         else:
             if not iaction.interID in self.the_data.keys():
+                # add the interaction to the dataset
                 self.the_data.update({ iaction.interID : iaction }) ;
-            
-                # if the interaction belongs to a previously uncharacterized edge
+
+                # and also add it to an edge
+                # if there is no appropriate edge
                 if iaction.edgekey() not in self.edges and ei( iaction.edgekey()) not in self.edges : 
-                    if self.debug:
-                        sys.stderr.write("DEBUG: New edge created for interaction {}.\n".format( iaction.interID))
-                    # create the edge
-                    newedge = bgedge( interaction = iaction,
-                                      directed    = iaction.directed,
-                                      qual        = iaction.qualifications)
+                    self._add_new_edge_from_iaction( iaction )
+                # if the edge was previously created...
+                else:
+                    # ...but backwards
+                    if ei( iaction.edgekey()) in self.edges : 
+                        self.edges[ ei( iaction.edgekey())].add_interaction( iaction )
+                    else :
+                        self.edges[ iaction.edgekey()].add_interaction( iaction )
 
-                    # add it to the dataSet's dict of edges
-                    self.edges.update({ newedge.key : newedge }) ;
-                
-                    # connect partners of this edge(may be unecessary) ; 
-                    newedge.whence.partners.update({ newedge.to.key : newedge.to }) ; 
-                    newedge.to.partners.update({ newedge.whence.key : newedge.whence }) ; 
-                
-                    if newedge.whence.key not in newedge.to.edges : 
-                        newedge.to.edges.update({ newedge.whence.key : { newedge } }) ; 
-                    else : 
-                        newedge.to.edges[newedge.whence.key].add(newedge) ; 
-                    
-                    if newedge.to.key not in newedge.whence.edges : 
-                        newedge.whence.edges.update({ newedge.to.key : { newedge } }) ; 
-                    else : 
-                        newedge.whence.edges[newedge.to.key].add(newedge) ; 
-
-                # if the edge was previously characterized, but backwards
-                elif ei( iaction.edgekey()) in self.edges : 
-                    self.edges[ ei( iaction.edgekey())].add_interaction( iaction )
-                else :
-                    self.edges[ iaction.edgekey()].add_interaction( iaction )
-
+                # finally, update the nodes - they keep track of their interactions
                 iaction.nodeA.interactions.update({ iaction.interID : iaction })
                 iaction.nodeB.interactions.update({ iaction.interID : iaction })
+
+                if self.debug:
+                    sys.stderr.write("DEBUG: Interaction {} was added to dataset.\n".format( iaction.interID))
 
         return True
 
@@ -815,9 +833,9 @@ class dataSet(object):
                 thequal = qualify_line
             else : 
                 thequal = data.get( 'qualifications', qualify_line ) ; 
-            #logger.debug( 'b: "' + i_keys['b']+'"' )
-            #logger.debug( self.nodes )
+
             if data["interid"] not in added_iKeys :
+                logger.debug("WARNING: New interaction {} on line {} was added!\n".format(data["interid"],i))
                 thisinteraction = interaction( interID        =    data.get("interid"),\
                                                system         =    data.get("system"),\
                                                systemType     =    data.get("systemtype"),\
@@ -834,7 +852,7 @@ class dataSet(object):
                                                nodeA          =    self.nodes[i_keys['a']],\
                                                nodeB          =    self.nodes[i_keys['b']],) ; 
             else:
-                logger.debug("WARNING: Interaction {} on line {} has already been added!\n".format(data["interid"],i))
+                logger.debug("WARNING: Interaction {} on line {} has already been added - skipped!\n".format(data["interid"],i))
                 continue ;
 
             if self._add_interaction( thisinteraction ):
@@ -842,26 +860,43 @@ class dataSet(object):
                 
         logger.debug("Completed.") ;
         
-    def parse( self, infobj, sep = '\t', fd = None, h2m = False, m2h = False, directed = False, qualify = '',
-               force_qualify = False, force_score = None, user = None ) :
+    def parse( self, infobj, sep = '\t', fd = None, convert = None, directed = False, qualify = '',
+               floor = None, force_qualify = False, force_score = None, user = None ) :
 
         if type(infobj) is str : 
             infobj=open(infobj) ;
 
         self.infilenames.append( infobj.name )
         
-        filelines   = sum( 1 for line in infobj ) ;
-        sys.stderr.write('Parsing {} ({} lines).\n'.format(infobj.name,filelines)) ; 
-        infobj.seek(0) ; # return pointer to beginning of file
-
         added_iKeys = set(self.the_data.keys()) ;
         added_nKeys = set(self.nodes.keys()) ;
-        headerline  = infobj.readline() ;
-        headers     = headerline.split(sep) ;
+        converted   = dict()
         fields_dict = fd if fd else DEFAULT_FIELD_DICTIONARY
+
+        pseudoscore = PSEUDO_DEFAULT
+        pseudofloor = pseudoscore if floor is None else pseudoscore * floor
+        filelines   = 0
+        for line in infobj:
+            line    = line.strip()            
+            if re.search(r'\tpseudocount$', line):
+                vals        = line.split( sep )
+                data        = dict(list(zip( fields_dict, vals)))
+                pseudoscore = float(data.get('score', PSEUDO_DEFAULT ))
+                pseudofloor = pseudoscore if floor is None else pseudoscore * floor
+            filelines      += 1
+
+        if self.debug : 
+            sys.stderr.write('DEBUG: ' +
+                             '        pseudoscore for this dataset is {:8.6}\n'.format(pseudoscore)+\
+                             '        giving score threshold '+repr(floor)+' * <pseudoscore> = '+\
+                             '{:8.6}'.format(pseudofloor)+' to filter\n')
+
+        sys.stderr.write('Parsing {} ({} lines).\n'.format(infobj.name,filelines)) ; 
+        infobj.seek(0) ; # return pointer to beginning of file
+        
+        headerline  = infobj.readline() ;
         dataline    = infobj.readline()
         i           = 1
-        converted   = dict()
         
         while dataline : 
 
@@ -896,14 +931,14 @@ class dataSet(object):
                                    organism     = data.get( 'organism' + c, self.default_organism),
                                    key          = ori_key,
                                    debug        = self.superdebug) ;
-                if h2m :
+                if convert == 'h2m' :
                     if ori_key in converted:
                         new_node = converted[ ori_key ]
                     else:
                         new_node = mouseify_node(new_node)
                         converted[ ori_key ] = new_node
                     
-                elif m2h : 
+                elif convert == 'm2h' : 
                     if ori_key in converted:
                         new_node = converted[ ori_key ]
                     else:
@@ -916,20 +951,19 @@ class dataSet(object):
 
                     if self._add_node( new_node ):
                         added_nKeys.add( new_node.key )
-                        print(new_node.key + ' ' + str(new_node.organism))
+                        #print(new_node.key + ' ' + str(new_node.organism))
                     else:
                         node_was_filtered = True
 
             if not node_was_filtered:
                 if data["interID"] not in added_iKeys :
-
                     thisinteraction = interaction( interID        =    data.get("interID"),
                                                    system         =    data.get("system"),
                                                    systemType     =    data.get("systemType"),
                                                    Author         =    data.get("Author"),
                                                    pmid           =    data.get("pmid"),
                                                    throughput     =    data.get("throughput"),
-                                                   score          =    data.get("score"),
+                                                   score          =    data.get('score') if data.get('score') in ['','-'] else float(data.get("score")),
                                                    modification   =    data.get("modification"),
                                                    phenotypes     =    data.get("phenotypes"),
                                                    qualifications =    qualify if force_qualify else data.get('qualifications', qualify),
@@ -939,11 +973,14 @@ class dataSet(object):
                                                    nodeA          =    self.nodes[i_keys['A']],
                                                    nodeB          =    self.nodes[i_keys['B']])
 
-                    if self._add_interaction( thisinteraction ):
+                    if self._add_interaction( thisinteraction, pseudofloor ):
                         added_iKeys.add(data["interID"])
+                        if self.debug:
+                            sys.stderr.write("\rWARNING: Interaction {} on line {} was added to dataset!\n".format(data["interID"],i)) ;
                         
                 else :
-                    sys.stderr.write("\rWARNING: Interaction {} on line {} has already been added!\n".format(data["interID"],i)) ;
+                    if self.debug:
+                        sys.stderr.write("\rWARNING: Interaction {} on line {} has already been added!\n".format(data["interID"],i)) ;
 
             dataline = infobj.readline() ;
             i       += 1;
@@ -952,7 +989,7 @@ class dataSet(object):
                 sys.stdout.flush()
             
         if (self.debug):
-            sys.stderr.write("\nCompleted.\n")
+            sys.stderr.write("\nCompleted " + infobj.name + ".\n")
         else :
             if not user == 'apache':             
                 mu.waitbar( 80, 80, fill = '%', showPct = True )
