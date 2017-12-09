@@ -257,7 +257,8 @@ class interaction(object):
         if self.directed : 
             edgeicon='>' ; 
         else :
-            edgeicon='^' ; 
+            edgeicon='^' ;
+
         return self.nodeA.key + edgeicon + self.nodeB.key + ':' + self.qualifications
 
     def __contains__(self,thing) : 
@@ -294,6 +295,7 @@ class bgedge(object):
         self.key            = ''
         self.meanscore      = 0.0
         self.p              = 1.0
+        self.p_ori          = 1.0
         self.qual           = qual
         self.source         = '' 
         self.to             = None
@@ -301,9 +303,12 @@ class bgedge(object):
         self.weight         = 0
         self.whence         = None
         self.avgP           = 0.0
-        self.spc            = ''
+        self.spc            = 0
         self.bkg            = ''
+        self.upept          = 0
+        self.cov            = 0.0
 
+        
         if interaction : 
             self.add_interaction( interaction ) ; 
 
