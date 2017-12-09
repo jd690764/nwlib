@@ -874,7 +874,11 @@ def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_we
 
         if print_bkg:
             f.write("{}Background Values".format(sep))
+            f.write("{}pVal".format(sep))            
             f.write("{}Spectral Counts".format(sep))
+            f.write("{}Coverage".format(sep))
+            f.write("{}Unique peptides".format(sep))
+            
             
         f.write("\n") ;
 
@@ -923,8 +927,13 @@ def print_springs( edges, fname = "", print_headers = True, sep = '\t', print_we
 
         if print_bkg:
             f.write("{}{}".format(sep,edge.bkg))
-            edge.spc =  '|'.join([ re.sub( r'^.+_(\d+)$', r'\1', i.tags) for i in edge.interactions ])
-            f.write("{}{}".format(sep,edge.spc))            
+            f.write("{}{}".format(sep,edge.p_ori))
+            edge.spc   =  '|'.join([ re.sub( r'^.+raw_(\d+)_?.*$', r'\1', i.tags) for i in edge.interactions ])
+            edge.cov   =  '|'.join([ re.sub( r'^.+cov_([\d\.]+)_?.*$', r'\1', i.tags) for i in edge.interactions ])
+            edge.upept =  '|'.join([ re.sub( r'^.+upept_(\d+)_?.*$', r'\1', i.tags) for i in edge.interactions ])            
+            f.write("{}{}".format(sep,edge.spc))
+            f.write("{}{}".format(sep,edge.cov))
+            f.write("{}{}".format(sep,edge.upept))            
             
         f.write("\n") ;
 
@@ -1253,13 +1262,9 @@ def madfilter(dataset,ctrl_fname,baitkey,qual=None,directed=False,as_dict=False,
 
 def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
 
-    #       ek --> preysymbol
-    #       ek --> meanscore
-    #       preysymbol --> meanscore
-
-    ek_ps = dict()
-    ek_ms = dict()
-    ps_ms = dict()
+    ek_ps = dict() # edgekey --> preysymbol
+    ek_ms = dict() # edgekey --> meanscore
+    ps_ms = dict() # preysymbol --> meanscore
 
     for e in { e for es in ds.nodes[baitkey].edges.values() for e in es  } :
         if qual and e.qual != qual : 
@@ -1286,7 +1291,29 @@ def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
 def mad(series) : 
     return np.percentile(np.abs(series-np.percentile(series,50)),50) ;
 
-def read_control_data( ctrl_fname, debug  ):
+def get_ortholog( symbol, conv, targ ):
+
+    conv = { conv[k][0]: conv[k][1] for k in conv if conv[k][0] is not None }
+    
+    if symbol in conv:
+        if len(conv[symbol]) == 1:
+            # if there is a single match, use that
+            symbol = conv[symbol]
+        else:
+            for s in conv[symbol]:
+                # select the one with the same name
+                if s.lower() == symbol.lower():
+                    symbol = s
+                    break
+            else:
+                # else, select the one with the smallest eid
+                eid = str(sorted([int(targ['Symbol'][k]['EID']) for k in conv[symbol]])[0])
+                symbol = targ['EID'][eid]['Symbol']
+                
+    return symbol
+    
+
+def read_control_data( ctrl_fname, convert, debug  ):
     # read in control file
     
     if not os.path.isfile(ctrl_fname) and not os.path.isfile(CONTROL_FILES + ctrl_fname) :
@@ -1308,6 +1335,20 @@ def read_control_data( ctrl_fname, debug  ):
         sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : control\n'+
                          '        syms: '+str(len(allsyms))+' files: '+str(len(allfns))+'\n') ;
 
+    if convert is not None:
+        asfile = fn + '_allsymb'
+        if os.path.isfile( asfile ):
+            with open(asfile, 'rb') as x:
+                allsymb = pickle.load(x)
+        else:
+            rbase.load('m2hs') if convert == 'm2h' else rbase.load('h2ms')
+            conv   = rbase.m2hs if convert == 'm2h' else rbase.h2ms
+            rbase.load('hsg')  if convert == 'm2h' else rbase.load('mmg')
+            targ   = rbase.hsg  if convert == 'm2h' else rbase.mmg
+            allsym = [get_ortholog( symb, conv, targ ) for symb in allsyms ]
+            with open(asfile, 'wb') as x:
+                pickle.dump(allsym, x)
+        
     return( allsyms, allfns, loggrid )
         
     
@@ -1319,6 +1360,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
                     directed = False,       # is the network directed/non-
                     as_dict  = False,       # returns two dictionary objects of mad and p-value for each edge
                     alpha    = 0.05,        # fwer or fdr deepending on method
+                    convert  = None,        # whether to convert the control file to another org 
                     debug    = False,       #
                     maxcorr  = 0.75,        #
                     method   = 'fdr_bh',    # method for multiple hypothesis testing correction
@@ -1333,7 +1375,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
         baitkey : key of bait
     """
 
-    ( allsyms, allfns, loggrid ) = read_control_data( ctrl_fname, debug )
+    ( allsyms, allfns, loggrid ) = read_control_data( ctrl_fname, convert, debug )
     symset      = set(allsyms) ; 
     pseudoindex = allsyms.index('PSEUDO') ;
     #pseudoscore = dataset.nodes[baitkey].edges.get('PSEUDO_00', PSEUDO_DEFAULT)
@@ -1379,33 +1421,34 @@ def madfilter_corr( dataset,                # network dataset to process, intera
 
     for ek in ek_ps.keys() :
         e = dataset.edges[ek] ;
+        i = pseudoindex
+        #if e.to.official not in symset : 
+        #    madscore = (ek_ms[ek]- np.median(compgrid[pseudoindex,:])) / mad(compgrid[pseudoindex,:])/ 1.48 ;
+        #    bkgvls   = compgrid[pseudoindex,:]
+        #    if debug :
+        #        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
+        #        ' not in background - given score '+'{:8.6}'.format(madscore)+' (pseudocounted) \n') ;
 
-        if e.to.official not in symset : 
-            madscore = (ek_ms[ek]- np.median(compgrid[pseudoindex,:])) / mad(compgrid[pseudoindex,:])/ 1.48 ;
-            bkgvls   = compgrid[pseudoindex,:]
-            if debug :
-                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-                ' not in background - given score '+'{:8.6}'.format(madscore)+' (pseudocounted) \n') ;
+        #elif e.to.official in symset :
+        if e.to.official in symset : 
+            i    = allsyms.index( e.to.official )
 
-        elif e.to.official in symset : 
-            i        = allsyms.index( e.to.official )
-            madscore = ( ek_ms[ek] - np.median(compgrid[i,:])) / mad(compgrid[i,:]) / 1.48 ;
-            p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
-            bkgvls   = compgrid[i,:]
-            if debug : 
-                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key +
-                                 ' given score '+'{:8.6}'.format(madscore)+'; nsaf vs. p05_cut =' +
-                                 '{:8.6}'.format(ek_ms[ek]) + ' vs. {:8.6}'.format(p05_cut) + '  \n')
+        madscore = ( ek_ms[ek] - np.median(compgrid[i,:])) / mad(compgrid[i,:]) / 1.48 ;
+        p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
+        bkgvls   = compgrid[i,:]
+        pval     = 1-norm.cdf(madscore)
 
         maddict.update({ e.key : madscore }) ;
-        peedict.update({ e.key : 1-norm.cdf(madscore) })
+        peedict.update({ e.key : pval })
         bkgdict.update({ e.key : "|".join( map( str, bkgvls)) })
-        
-        if debug : 
-            sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-            ' given non-adjusted p-value '+'{:8.6}'.format(peedict[e.key])+'  \n') ;
 
-                    
+        if debug : 
+            sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge='+e.key +
+                             ' madscore='+'{:8.6}'.format(madscore)+'; nsaf=' +
+                             '{:8.6}'.format(ek_ms[ek]) + ' p05_cut='+ '{:8.6}'.format(p05_cut) + ' pval=' +
+                             '{:8.6}'.format(pval) + '  \n')
+            
+        
     eks  = list( maddict.keys() ) 
     mads = list( maddict.values() ) 
     pees = list( peedict.values() )
@@ -1417,8 +1460,9 @@ def madfilter_corr( dataset,                # network dataset to process, intera
 
     if assign_edge_ps : 
         for i in range(len(eks)) : 
-            dataset.edges[eks[i]].p    = adjpees[i]
-            dataset.edges[eks[i]].bkg  = bkgs[i]
+            dataset.edges[eks[i]].p     = adjpees[i]
+            dataset.edges[eks[i]].p_ori = pees[i]
+            dataset.edges[eks[i]].bkg   = bkgs[i]
             
     #adjval = { pees[x] for x in range(len(eks)) if rejects[x] }
     if debug : 
