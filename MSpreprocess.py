@@ -39,7 +39,7 @@ spacc         = re.compile(r".*sp\|(.*)\|.*",re.IGNORECASE)
 entrezh       = re.compile(r'.*gi\|.*',re.IGNORECASE) 
 uprotre       = re.compile(r'.*(sp|tr)(\|[a-z0-9]+\|[a-z0-9]+_(human|mouse))', re.IGNORECASE)
 refseqre      = re.compile(r'.*ref\|([AXNYZ]P_\d+\.\d+)', re.IGNORECASE)
-
+spiform       = re.compile(r".*sp\|(.*)-?\d?\d?\|.*",re.IGNORECASE)
 
 # IMPORTANT : What type of file should you run this on ? 
 #
@@ -300,6 +300,11 @@ class MSdata(object) :
         
         f            = infobj
         s            = f.readline().strip().split(sep) # moves past headers
+        if 'MAX' in s:
+            maxIndex = s.index('MAX')
+        else:
+            print( 'MAX is not found among the columns! - Check datafile!!!' )
+            
         maxCtDatum   = None 
         maxCt        = 0
         if overWrite:
@@ -309,14 +314,14 @@ class MSdata(object) :
             
             linel    = line.strip().split(sep)
             thisdesc = linel[1]
-
+            print(line)
             # skip lines labeled contaminant
             if contam.match(thisdesc) :
                 continue
 
             frac_counts = list()
 
-            for c in linel[2:len(linel)-2] :
+            for c in linel[2:maxIndex] :
             # this is MINUS 2 because the second-to-last column is MAX and should not be summed
             # with the others 
                 try : 
@@ -817,7 +822,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
     def refertouser( faildesc ) :
 
-        if faildesc in rb.dup : 
+        if faildesc in rb.dup :
             if debug : 
                 sys.stdout.write('Description in rbase.dup.\n')
                 print(str(rb.dup[ faildesc ]))
@@ -832,17 +837,18 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
         noquote = faildesc.lstrip(' \'"').rstrip(' "\'')[:100]
         noquote = re.escape( noquote )
-                
+
         found = None
         for test in [ noquote, ref, up ]:
             if test == None or test == '':
                 continue
 
-            hits  = [k for k in rb.dup if re.search( test, k)]
+            hits  = [k for k in rb.dup if test in k]
+
             if len(hits) > 0:
                 found = rb.dup.get( hits[0] )
                 if debug : 
-                    sys.stdout.write('Description in rbase.dup.\n')
+                    sys.stdout.write('Description found in rbase.dup.\n')
 
                 rb.dup.update({ faildesc : found })
                 rb.update_dup( rb.dup )                    
@@ -924,7 +930,8 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
     ms      = swisspre.match( desc ) 
     mt      = tremblre.match( desc ) 
     mg      = symbolre.match( desc ) 
-    mp      = proteinre.match( desc )  
+    mp      = proteinre.match( desc )
+    mi      = spiform.match( desc ) # swissprot isoform
 
     froment = list() 
     fromsym = list() 
@@ -933,6 +940,11 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
     fromsyn = list() 
     frompep = list() 
 
+    # remove isoform part of sp acc
+    if mi :
+        desc    = re.sub(r'^(sp|.+)-\d+(|.+)$', '\\1\\2', desc)
+        ms      = swisspre.match( desc )
+    
     if me : 
         froment = reference['eid'].get( me.group(1), '' ) 
     if mg : 
