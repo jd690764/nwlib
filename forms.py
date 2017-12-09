@@ -1,7 +1,9 @@
 from django import forms
 from numpy import unique
 import os
+import re
 from django.contrib.admin.filters import AllValuesFieldListFilter
+from django.db.models.aggregates import Max
 from network.models import Sample
 
 modifs = (('Propionamide', 'Propionamide'),
@@ -35,22 +37,28 @@ class lookupForm(forms.Form):
                                    required = True )
     bait       = forms.MultipleChoiceField( widget  = forms.SelectMultiple( attrs = {'size':'20'}),
                                             choices = ())
-
+    expt       = forms.ChoiceField(choices  = (),
+                                   required = True )
 
     def __init__(self, *args, **kwargs):
 
         super(lookupForm, self).__init__(*args, **kwargs)
 
         ifilenames = [fn for fn in os.listdir('/mnt/msrepo/ifiles') if fn[-2:] == '.i' and not 'bioplex' in fn and fn[0] != '.' ]
-        bs         = sorted(unique( [ fn.split('_')[0].upper() for fn in ifilenames ]))
-        bs.insert(0, 'all')
+        ls         = ['select one'] + sorted(unique([ re.sub(r'_\d+\.i$', '', fn) for fn in ifilenames ]), key=lambda s: s.lower())
+        labels     = list()
+        for l in ls:
+            labels.append((l, l))
+            
+        bs         = ['all'] + sorted(unique( [ fn.split('_')[0].upper() for fn in ifilenames ]))
         baits      = list()
         for b in bs:
             baits.append((b, b))
         baits = tuple(baits)
 
-        self.fields['org'].choices = organisms
+        self.fields['org'].choices  = organisms
         self.fields['bait'].choices = baits
+        self.fields['expt'].choices = labels
 
 class lookupPtmForm(forms.Form):
 
@@ -71,7 +79,9 @@ class lookupPtmForm(forms.Form):
         super(lookupPtmForm, self).__init__(*args, **kwargs)
 
         dirs       = os.listdir('/mnt/msrepo/fractionFiles')
-        samples    = Sample.objects.filter(ff_folder__in=dirs).values( 'label', 'bait_symbol' )
+        query      = Sample.objects.filter(ff_folder__in=dirs, display=True, discard=False).values('uid').annotate(mid=Max('id'))
+        ids        = [ q['mid'] for q in query ]
+        samples    = Sample.objects.filter(id__in=ids).values( 'label', 'bait_symbol' )
         bs         = ['all'] + sorted(unique( [ k['bait_symbol'].upper() for k in samples ]))
         baits      = list()
         for b in bs:
