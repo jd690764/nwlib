@@ -17,7 +17,7 @@ import lib.filters as flt
 import pandas as pd
 from lib import config as cg
 
-from network.models import Entrez, Ncbiprot
+from network.models import Entrez, Ncbiprots
 
 rb.load('dup')
 
@@ -110,7 +110,7 @@ def make_gene_reference( org ):
         
 def make_protein_reference( org ):
 
-    prot   = Ncbiprot.objects.all().values( 'gi', 'acc', 'eid', 'protname', 'len', 'symbol', 'taxid' )
+    prot   = Ncbiprots.objects.all().values( 'gi', 'acc', 'eid', 'protname', 'len', 'symbol', 'taxid' )
     if org == orgs[ 'hs' ]:
         global hspREF
         hspREF = { x['acc']: x for x in prot if x['taxid'] == org }
@@ -300,6 +300,7 @@ class MSdata(object) :
         
         f            = infobj
         s            = f.readline().strip().split(sep) # moves past headers
+        s            = [x.upper() for x in s]
         if 'MAX' in s:
             maxIndex = s.index('MAX')
         else:
@@ -570,9 +571,10 @@ class MSdata(object) :
         eidlens = dict() 
         bw      = 0.0
         for d in self.fwdata :
-            if not notNone( [d.entrez, d.organism] ):
+            if not notNone( [d.entrez, d.organism] ) or d.organism == None:
                 print( str(d.entrez) + ' ' + str(d.organism))                
                 continue
+            print( str(d.official) + str(d.desc) + str(d.entrez) + ' ' + str(d.organism))            
             eidlens.update({ d : eidLen( d.entrez, d.organism )})
             if notNone([ r.match(d.official) for r in flt.exo ]) :
                 print( 'skip contaminants: ' + d.official)
@@ -812,7 +814,7 @@ def seqRetter(descline) :
 
 def notNone(serie) : 
     for x in serie : 
-        if x is None : 
+        if x is None or x == 'None' : 
             return False
 
     return True
@@ -820,13 +822,24 @@ def notNone(serie) :
 
 def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', reference = hsgREF ) : 
 
-    def refertouser( faildesc ) :
-
-        if faildesc in rb.dup :
+    def findInDup( dup_dict, faildesc ):
+        
+        if faildesc in dup_dict :
             if debug : 
                 sys.stdout.write('Description in rbase.dup.\n')
-                print(str(rb.dup[ faildesc ]))
-            return rb.dup[ faildesc ]
+                print(str(dup_dict[ faildesc ]))
+            return dup_dict[ faildesc ]
+        return None
+    
+    def update_dup( dup_dict, faildesc, annot ):
+        dup_dict.update({ faildesc : annot })
+        rb.update_dup( dup_dict )
+    
+    def refertouser( faildesc ) :
+
+        found = findInDup( rb.dup, faildesc )
+        if found:
+            return found
 
         up  = uprotre.match( faildesc )
         if not up == None:
@@ -850,8 +863,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
                 if debug : 
                     sys.stdout.write('Description found in rbase.dup.\n')
 
-                rb.dup.update({ faildesc : found })
-                rb.update_dup( rb.dup )                    
+                update_dup( rb.dup, faildesc, found )                    
                 return found
         
         sys.stderr.write("\nDATASET: Provided description \n\t'{}'\n  cannot be mapped to any entrez entry.".format(faildesc ));
@@ -881,8 +893,7 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
             sys.stderr.flush()
             result = ( '00', fetchedSym, '00' )  
 
-        rb.dup.update({ desc : result })
-        rb.update_dup( rb.dup )    
+        update_dup( rb.dup, desc, result )    
             
         return result
     
@@ -1014,8 +1025,14 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
                 sys.stderr.write('    {:-<12}--{:-<12}..{:.>}\n'.format(c['symbol'],c['eid'],mid[c['eid']])) 
 
         if choices and type(choices) is list and len(choices) > 1 :
-            (entrez,sym,org) = referwithlist(desc,choices); 
-
+            # check if the selection was made before
+            found = findInDup( rb.dup, desc )
+            if found:
+                (entrez,sym,org) = found
+            else:
+                (entrez,sym,org) = referwithlist(desc,choices)
+                update_dup(rb.dup, desc, (entrez,sym,org))
+                
         elif choices and type(choices) is list :
             sym    = choices[0]['symbol'] 
             entrez = choices[0]['eid'] 
@@ -1110,7 +1127,7 @@ def eidLen( eid, org, suppress = True ) :
 
     if not notNone( [eid, org] ):
         return None
-        
+    
     org = int(org)
     eid = int(eid) # some eids are '00' !
     
