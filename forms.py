@@ -1,4 +1,5 @@
 from django import forms
+import lib.config as conf
 from numpy import unique
 import os
 import re
@@ -27,6 +28,14 @@ organisms = (
     ('all', 'all'),
 )
 
+cell_lines = (
+    ('all', 'all'),
+    ('RPE', 'RPE'),
+    ('IMCD3', 'IMCD3'),
+    ('A549', 'A549'),
+    ('HEK293', 'HEK293'),
+    ('3T3', '3T3'),
+)
 
 class lookupForm(forms.Form):
 
@@ -39,12 +48,15 @@ class lookupForm(forms.Form):
                                             choices = ())
     expt       = forms.ChoiceField(choices  = (),
                                    required = True )
+    cline      = forms.ChoiceField(choices  = (),
+                                   label    = 'Cell line',
+                                   required = True )
 
     def __init__(self, *args, **kwargs):
 
         super(lookupForm, self).__init__(*args, **kwargs)
 
-        ifilenames = [fn for fn in os.listdir('/mnt/msrepo/ifiles') if fn[-2:] == '.i' and not 'bioplex' in fn and fn[0] != '.' ]
+        ifilenames = [fn for fn in os.listdir(conf.ifilesPath) if fn[-2:] == '.i' and not 'bioplex' in fn and fn[0] != '.' ]
         ls         = ['select one'] + sorted(unique([ re.sub(r'_\d+\.i$', '', fn) for fn in ifilenames ]), key=lambda s: s.lower())
         labels     = list()
         for l in ls:
@@ -59,7 +71,8 @@ class lookupForm(forms.Form):
         self.fields['org'].choices  = organisms
         self.fields['bait'].choices = baits
         self.fields['expt'].choices = labels
-
+        self.fields['cline'].choices = cell_lines
+        
 class lookupPtmForm(forms.Form):
 
     symbol     = forms.CharField(label    = 'Symbol',
@@ -78,7 +91,7 @@ class lookupPtmForm(forms.Form):
 
         super(lookupPtmForm, self).__init__(*args, **kwargs)
 
-        dirs       = os.listdir('/mnt/msrepo/fractionFiles')
+        dirs       = os.listdir(conf.fractionfilesPath)
         query      = Sample.objects.filter(ff_folder__in=dirs, display=True, discard=False).values('uid').annotate(mid=Max('id'))
         ids        = [ q['mid'] for q in query ]
         samples    = Sample.objects.filter(id__in=ids).values( 'label', 'bait_symbol' )
