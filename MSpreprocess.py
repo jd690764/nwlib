@@ -572,10 +572,12 @@ class MSdata(object) :
         bw      = 0.0
         for d in self.fwdata :
             if not notNone( [d.entrez, d.organism] ) or d.organism == None:
-                print( str(d.entrez) + ' ' + str(d.organism))                
+                #print( str(d.entrez) + ' ' + str(d.organism))                
                 continue
-            print( str(d.official) + str(d.desc) + str(d.entrez) + ' ' + str(d.organism))            
+            #print( str(d.official) + str(d.desc) + str(d.entrez) + ' ' + str(d.organism))            
             eidlens.update({ d : eidLen( d.entrez, d.organism )})
+            # this should be 'any'
+            #if any([ r.match(d.official) for r in flt.exo ]) :
             if notNone([ r.match(d.official) for r in flt.exo ]) :
                 print( 'skip contaminants: ' + d.official)
                 pass 

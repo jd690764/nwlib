@@ -25,8 +25,8 @@ def findURL( url, diry, pattern ):
             raise
 
     for rf in rfiles:
-        if re.search( pattern, rf[0] ):
-            dlfile = url + '/' + diry + rf[0]
+        if re.search( pattern, rf ):
+            dlfile = url + '/' + diry + rf
             break
 
     return dlfile

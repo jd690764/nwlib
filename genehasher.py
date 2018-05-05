@@ -240,8 +240,10 @@ class pephash(dict) :
             elif line[0:7] == 'VERSION' :
 
                 #linel=' '.join(line.split()).split() ;
-                gi=line.split(':')[1].strip() ;
-
+                #gi = line.split(':')[1].strip() ;
+                # gi has been retired
+                gi = 0
+                
             elif '/gene=' in line : 
                 sym=line.split('"')[1] ;
 
@@ -352,7 +354,9 @@ def parse( infilename ) :
 
             elif line[0:7] == 'VERSION' :
 
-                gi     = line.split(':')[1].strip()
+                # gi was retired
+                #gi     = line.split(':')[1].strip()
+                gi     = 0
 
             elif '/gene=' in line : 
                 sym    = line.split('"')[1]

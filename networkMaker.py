@@ -173,10 +173,11 @@ def filterNodesByBackground( nwdata, c ):
     for dsd in c['ds_dicts'] :
         print(dsd['infilename'])
         zfhits_strong     |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
+                                                convert = dsd.get('convert', None), 
                                                 qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_HI'],
-                                                maxcorr = c['CORRL_HI'], debug = DB, method = c['mt_method'] )
+                                                maxcorr = c['CORRL_HI'], debug = True, method = c['mt_method'] )
         zfhits_weak       |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
-                                                qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
+                                                convert = dsd.get('convert', None),                                                                                         qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
                                                 maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] )
 
     store_first_pass_data( nwdata, c, zfhits_strong, zfhits_weak )
@@ -400,7 +401,7 @@ unitransform = lambda x : 7.0 if x==0.0 else -1 * np.log10(x)
 def makeOutput( nwdata, c ):
 
     ie.print_springs( c['edges_pass2'], print_headers = True, print_weights = True, transform_scores = unitransform,
-                      print_quals = True, fname = c['outfilename'] ,print_pps=True, print_bkg = False )
+                      print_quals = True, fname = c['outfilename'] ,print_pps=True, print_bkg = True )
 
     sys.stdout.write("Nodes:\n  Pass 1: {}\n    Strong: {}\n  Pass 2: {}\n    Rescued : {}\n\n".
                      format( len( c['node_pass1_all'] ), len( c['node_pass1_strong'] ), len( c['nodes_pass2'] ), c['nnodes_rescued'] ))
