@@ -73,9 +73,11 @@ def gunzip( gzFile, path, destFile, append = False ):
     mode = 'wt'
     if append:
         mode = 'at'
+    if not re.search(r'\/$', path):
+        path = path + '/'
     if os.path.exists( gzFile ) and os.path.exists( path ):
         with gzip.open( gzFile, 'rt' ) as src:
-            with open( destFile, mode ) as dest:
+            with open( path + destFile, mode ) as dest:
                 dest.writelines( src )
     else:
         print( 'check if paths exist!' )
