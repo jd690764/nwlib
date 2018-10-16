@@ -17,7 +17,7 @@ import lib.filters as flt
 import pandas as pd
 from lib import config as cg
 
-from network.models import Entrez, Ncbiprots
+from network.models import Entrez, Ncbiprots, Dproc
 
 rb.load('dup')
 
@@ -1158,3 +1158,51 @@ def dupConvert( outfile ):
         for k in dup:
             fh.writelines( k + "\t" +  '\t'.join([str(i) for i in dup[k]]) + "\n" )
 
+def make_rawfile( dprocid, overw = True ):
+
+    # make a raw file (excel file in the cg.rawfilesPath directory)
+    # from fraction files of an APMS experiment
+    # based on the id of the Dproc table (dprocid). If overw = True,
+    # overwrite the existing file if it exists.
+
+    dproc   = Dproc.objects.get( pk = dprocid )
+    outfile = dproc.rawfile
+    srcdir  = cg.fractionfilesPath + dproc.ff_folder + '/'
+    
+    if overw == True or not os.path.isfile( cg.rawfilesPath + outfile ):
+        if dproc.ff_folder == None or dproc.ff_folder == '':
+            # we have no data 
+            outfile = None
+        else:
+            files = os.listdir(srcdir)
+            # make sure no weird files come through
+            files = [f for f in files if re.search('^[1-9a-zA-Z].+xlsx$', f)]
+            files.sort()
+            
+            for i in range(0, len(files)):
+                tab = pd.read_excel(srcdir + files[i], sheetname = 'Proteins')
+                tab = tab[['Description', '# of\nspectra']]
+                # drop rows that don't have values - keep only master entry
+                tab = tab.dropna()
+                # remove Reverse entries
+                tab = tab[ ~tab.Description.str.contains('^>Reverse')]
+                # rename columns
+                tab.columns = ['Protein Name', files[i]]
+                
+                if i == 0:
+                    summary_df = tab
+                else:
+                    # full join on protein name
+                    summary_df = pd.merge(summary_df, tab, on = 'Protein Name', how = 'outer')
+
+            # add max and sum columns to table, sort the rows by max vaue and add index column 
+            summary_df['MAX'] = summary_df.drop('Protein Name', axis = 1).max(axis = 1, skipna = True)
+            summary_df['SUM'] = summary_df.drop(['Protein Name', 'MAX'], axis = 1).sum(axis = 1, skipna = True)
+            summary_df = summary_df.sort_values(by = ['MAX', 'SUM'], ascending = False)
+            summary_df = summary_df.reset_index(drop = True)
+            summary_df.insert(0, 'Rank Number', summary_df.index+1)
+
+            # save excel file
+            summary_df.to_excel(excel_writer = cg.rawfilesPath + outfile, sheet_name = 'GLOBAL', index = False)
+
+    return outfile
