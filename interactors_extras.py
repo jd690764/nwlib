@@ -1,3 +1,4 @@
+#foo
 import sys
 import re
 from urllib.error import HTTPError
