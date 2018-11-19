@@ -76,7 +76,8 @@ def readYAMLfile( yamlfile, c ) :
     for dsd in c['ds_dicts'] : 
         lost_files    = 0
         if not os.path.isfile('./'+dsd['infilename']) and \
-           not os.path.isfile(c['ifiles']+dsd['infilename']) : 
+           not os.path.isfile(c['ifiles']+dsd['infilename']) and \
+           not os.path.isfile(dsd['infilename']): 
             print('File '+dsd['infilename']+' not found.')
             lost_files += 1
         if dsd['control'] not in refFiles:
@@ -141,9 +142,11 @@ def readInDatasets( nwdata, c, dict_to_use, keys ):
     for dsd in c[ dict_to_use ] : 
 
         if dsd['infilename'] in os.listdir('.') : 
-            dsf = open(dsd['infilename'])
+            dsf = open(dsd['infilename']) ; 
         elif os.path.isfile( c['ifiles'] + dsd['infilename'] ): 
-            dsf = open(c['ifiles'] + dsd['infilename'])
+            dsf = open(c['ifiles'] + dsd['infilename']) ; 
+        elif os.path.isfile( dsd['infilename'] ) : 
+            dsf = open(dsd['infilename']) ; 
         else :
             # problem
             continue
