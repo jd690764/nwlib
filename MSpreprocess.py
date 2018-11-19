@@ -23,6 +23,7 @@ rb.load('dup')
 
 PSEUDO_LENGTH = 375.0
 orgs          = { 'hs': 9606, 'mm': 10090 }
+taxids        = { 9606: 'human', 10090: 'mouse'}
 
 tremblre      = re.compile(r'.*tr\|([^\|]{6})\|.*') 
 swisspre      = re.compile(r'.*sp\|([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})\|.*', re.IGNORECASE ) 
@@ -315,7 +316,7 @@ class MSdata(object) :
             
             linel    = line.strip().split(sep)
             thisdesc = linel[1]
-            print(line)
+            #print(line)
             # skip lines labeled contaminant
             if contam.match(thisdesc) :
                 continue
@@ -784,10 +785,49 @@ class MSdata(object) :
             if d.official==baitOfficial :
                 self.bait=d  
                 break 
-        else : 
-            sys.stderr.write('Bait could not be identified!') 
-            self.bait=None 
-    
+        else :
+            # if we can: create a zero count MSdatum for the bait
+            # if we can't: create a bait with entezid = 0 (viral bait, gfp or other weird stuff)
+
+            # find out the org
+            org    = 9606
+            for i in range(10):
+                t = int(self.fwdata[i].__dict__['organism'])
+                if t != 0 and t != org:
+                    org = t 
+                break
+
+            org      = taxids[ org ]
+            libfile  = 'data/protein/' + org + '_refseq.fasta'
+            ptrn     = re.compile(r'^>.+ ' + baitOfficial + ' ')
+            desc     = ''
+            
+            with open(libfile, 'rt') as fa:
+                for line in fa:
+                    if re.search(ptrn, line):
+                        desc = line
+                        break
+
+            sys.stderr.write('baitofficial: ' + baitOfficial + '\ndesc: ' + desc)                    
+            if desc == '':
+                desc = 'Not in ' + org + ' library'
+                eid  = 0
+            else:
+                eid  = int(re.sub(r'^>.+ (\d+) ' + baitOfficial + '.+$', r'\1', desc))
+
+            tid      = self.fwdata[0].__dict__['organism']            
+            fxncount = [0 for i in range(len(self.fwdata[0].__dict__['fxncounts']))]
+            idn      = len(self.fwdata)
+
+            # create an MSdatum
+            new_bait = MSdatum(idn = idn, fxncounts = fxncount, desc = desc, isReverse = False)
+
+            new_bait.setEntrez(eid)
+            new_bait.setOfficial(baitOfficial)
+            new_bait.setLen(0)
+            new_bait.setOrganism(tid)
+
+            self.bait = new_bait    
 
 
 #wildly inefficent but occasionally necessary
@@ -1176,7 +1216,7 @@ def make_rawfile( dprocid, overw = True ):
         else:
             files = os.listdir(srcdir)
             # make sure no weird files come through
-            files = [f for f in files if re.search('^[1-9a-zA-Z].+xlsx$', f)]
+            files = [f for f in files if re.search('^[0-9a-zA-Z].+xlsx$', f)]
             files.sort()
             
             for i in range(0, len(files)):

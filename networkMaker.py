@@ -168,8 +168,10 @@ def filterNodesByBackground( nwdata, c ):
     zfhits_strong          = set( )
     zfhits_weak            = set( )
     #import pickle
+    #sys.setrecursionlimit(1200)
     #pickle.dump(nwdata, open('/usr/local/share/py/djscripts/tmp/nwdata.pk', 'wb'))
-
+    #pickle.dump(c, open('/usr/local/share/py/djscripts/tmp/nwdata_conf.pk', 'wb'))
+    
     for dsd in c['ds_dicts'] :
         print(dsd['infilename'])
         zfhits_strong     |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
@@ -610,7 +612,7 @@ def createNetwork( yamlfile ) :
     theds = I.dataSet(n_filter = config['node_filter'], debug = DB)
 
     readInDatasets( theds, config, 'ds_dicts', 'baitkeys' )
-
+    
     if config['mt_method'] == 'fdr_bh':
         # filter experimental data by background dists 
         filterNodesByBackground( theds, config )
