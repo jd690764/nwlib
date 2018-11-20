@@ -107,6 +107,8 @@ def readYAMLfile( yamlfile, c ) :
     c['rescueByComp']  = yout['options'].get('rescue_by_complex',False)
     c['rescueAll']     = yout['options'].get('rescue_all', False)
     c['public_dicts']  = yout['public']
+    c['adjust_pseudocount'] =   yout['options'].get('adjust_pseudocount',False)
+
     # this should be a list of dicts
     # each dict (1/public file) could have the fields : infilename qualify convert misncore minweight bait [] radius 
     # public datasets have NO baits, are NOT DIRECTED, and are NEVER compared to negative controls
@@ -180,10 +182,10 @@ def filterNodesByBackground( nwdata, c ):
         zfhits_strong     |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
                                                 convert = dsd.get('convert', None), 
                                                 qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_HI'],
-                                                maxcorr = c['CORRL_HI'], debug = True, method = c['mt_method'] )
+                                                maxcorr = c['CORRL_HI'], debug = True, method = c['mt_method'] , adjust_pseudocount =c['adjust_pseudocount'])
         zfhits_weak       |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
                                                 convert = dsd.get('convert', None),                                                                                         qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
-                                                maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] )
+                                                maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] , adjust_pseudocount   =c['adjust_pseudocount'])
 
     store_first_pass_data( nwdata, c, zfhits_strong, zfhits_weak )
     

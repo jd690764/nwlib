@@ -30,7 +30,7 @@ def topgroup(keykeys,wns,wes=None,remove_empty_groups=True,print_summary=True) :
     all remaining nodes in the dataset by which nodes they have edges to, either using
     all edges related to those nodes or strictly those in wes.
 
-    beginning 23 april 2014, items in keykeys can be sets of genes 
+    beginning 23 april 2015, items in keykeys can be sets of genes 
 
     While not strictly necessary, it is STRONGLY recommended that wns be an ordered iterable such
     that the tuples in dict 1 (see below) make sense to you.
