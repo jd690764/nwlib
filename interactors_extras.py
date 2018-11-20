@@ -1487,7 +1487,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     else :
         return passed
 
-def createReferenceFile( inputFile, overWrite = False ):
+def createReferenceFile( inputFile, overWrite = False , adjust_pseudo   =   True):
 
     if re.match( '.*cp2$', inputFile ):
         outf        = inputFile
@@ -1540,9 +1540,21 @@ def createReferenceFile( inputFile, overWrite = False ):
 
         grid           = np.zeros((len(allsyms),len(allfns)))
 
-        for i in range(len(allsyms)) : 
-            for j in range(len(allfns)) : 
-                grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
+        if adjust_pseudo : 
+            for i in range(len(allsyms)) : 
+                for j in range(len(allfns)) : 
+                # added MK 11/19/18
+                # alldatadict seems to be nested with 
+                # The grid values is either the value in the grid or the pseudocount, scaled by thelength
+                grid[i][j] = alldatadict[allfns[j]].get(
+                        allsyms[i],
+                        375/slens.get(allsyms[i],375)*alldatadict[allfns[j]]['PSEUDO'])
+        else : 
+            for i in range(len(allsyms)) : 
+                for j in range(len(allfns)) : 
+                    grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
+
+            #TODO integrate the adjust_pseudo option with networkMaker
 
         loggrid        = np.log10(grid) ;
         logmads        = np.fromiter( ( mad(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 
