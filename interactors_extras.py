@@ -22,6 +22,19 @@ sew=sys.stderr.write
 CONTROL_FILES  = cf.controlFiles
 PSEUDO_DEFAULT = 1e-5
 
+def eidLen(s) : 
+
+    if s not in rbase.hsp['Sym'] : 
+        return 375
+
+    recs=rbase.hsp['Sym'][s]
+
+    ax=[ rec['Acc'] for rec in recs ]
+    if any([ _ax.startswith('NP_') for _ax in ax ]) : 
+        return np.mean([ rec['Length'] for rec in recs if rec['Acc'][0:3] == 'NP_' ])
+    else : 
+        return np.mean([ rec['Length'] for rec in recs ])
+
 def topgroup(keykeys,wns,wes=None,remove_empty_groups=True,print_summary=True) : 
     """
     interactors_extras.topgroup(keykeys,wns) 
@@ -1314,7 +1327,7 @@ def get_ortholog( symbol, conv, targ ):
     return symbol
     
 
-def read_control_data( ctrl_fname, convert, debug  ):
+def read_control_data( ctrl_fname, convert, debug ):
     # read in control file
     
     if not os.path.isfile(ctrl_fname) and not os.path.isfile(CONTROL_FILES + ctrl_fname) :
@@ -1433,8 +1446,16 @@ def madfilter_corr( dataset,                # network dataset to process, intera
         #elif e.to.official in symset :
         if e.to.official in symset : 
             i    = allsyms.index( e.to.official )
+            scale=1
+        else : 
+            rbase.load('hsp')
+            scale=375/eidLen(e.to.official)
 
-        madscore = ( ek_ms[ek] - np.median(compgrid[i,:])) / mad(compgrid[i,:]) / 1.48 ;
+        #NOTE : most problems with non-length-adjusted pseudocounts shoul have been fixed with ifiles_runner_ladj
+        #HOWEVER (!!!), the edge case remains with a protein that has never been seen before showing up in
+        #the query dataset (viz. i == pseudoindex)
+
+        madscore = ( ek_ms[ek] - np.median(compgrid[i,:]*scale)) / mad(compgrid[i,:]*scale) / 1.48 ;
         p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
         bkgvls   = compgrid[i,:]
         pval     = 1-norm.cdf(madscore)
@@ -1487,7 +1508,7 @@ def madfilter_corr( dataset,                # network dataset to process, intera
     else :
         return passed
 
-def createReferenceFile( inputFile, overWrite = False , adjust_pseudo   =   True):
+def createReferenceFile( inputFile, overWrite = False ):
 
     if re.match( '.*cp2$', inputFile ):
         outf        = inputFile
@@ -1540,21 +1561,9 @@ def createReferenceFile( inputFile, overWrite = False , adjust_pseudo   =   True
 
         grid           = np.zeros((len(allsyms),len(allfns)))
 
-        if adjust_pseudo : 
-            for i in range(len(allsyms)) : 
-                for j in range(len(allfns)) : 
-                # added MK 11/19/18
-                # alldatadict seems to be nested with 
-                # The grid values is either the value in the grid or the pseudocount, scaled by thelength
-                grid[i][j] = alldatadict[allfns[j]].get(
-                        allsyms[i],
-                        375/slens.get(allsyms[i],375)*alldatadict[allfns[j]]['PSEUDO'])
-        else : 
-            for i in range(len(allsyms)) : 
-                for j in range(len(allfns)) : 
-                    grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
-
-            #TODO integrate the adjust_pseudo option with networkMaker
+        for i in range(len(allsyms)) : 
+            for j in range(len(allfns)) : 
+                grid[i][j] = alldatadict[allfns[j]].get(allsyms[i],alldatadict[allfns[j]]['PSEUDO'])
 
         loggrid        = np.log10(grid) ;
         logmads        = np.fromiter( ( mad(loggrid[i,:]) for i in range(len(allsyms)) ),dtype=np.float) ; 

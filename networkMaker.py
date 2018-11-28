@@ -72,23 +72,6 @@ def readYAMLfile( yamlfile, c ) :
 
     c['ds_dicts']     = yout['datasets']
 
-    refFiles          = dict()
-    for dsd in c['ds_dicts'] : 
-        lost_files    = 0
-        if not os.path.isfile('./'+dsd['infilename']) and \
-           not os.path.isfile(c['ifiles']+dsd['infilename']) and \
-           not os.path.isfile(dsd['infilename']): 
-            print('File '+dsd['infilename']+' not found.')
-            lost_files += 1
-        if dsd['control'] not in refFiles:
-            pFile     = ie.createReferenceFile( dsd['control'], overWrite = False)
-            refFiles[dsd['control']] = pFile
-            dsd['control_ori']       = dsd['control']            
-            dsd['control']           = pFile
-            
-    if lost_files > 0 : 
-        raise IOError
-
     c['organism']      = yout['options'].get('organism','human')
     c['ALPHA_HI']      = yout['options'].get('alpha_hi',0.01)
     c['ALPHA_LO']      = yout['options'].get('alpha_lo',0.05)
@@ -107,7 +90,23 @@ def readYAMLfile( yamlfile, c ) :
     c['rescueByComp']  = yout['options'].get('rescue_by_complex',False)
     c['rescueAll']     = yout['options'].get('rescue_all', False)
     c['public_dicts']  = yout['public']
-    c['adjust_pseudocount'] =   yout['options'].get('adjust_pseudocount',False)
+
+    refFiles          = dict()
+    for dsd in c['ds_dicts'] : 
+        lost_files    = 0
+        if not os.path.isfile('./'+dsd['infilename']) and \
+           not os.path.isfile(c['ifiles']+dsd['infilename']) and \
+           not os.path.isfile(dsd['infilename']): 
+            print('File '+dsd['infilename']+' not found.')
+            lost_files += 1
+        if dsd['control'] not in refFiles:
+            pFile     = ie.createReferenceFile( dsd['control'], overWrite = False)
+            refFiles[dsd['control']] = pFile
+            dsd['control_ori']       = dsd['control']            
+            dsd['control']           = pFile
+            
+    if lost_files > 0 : 
+        raise IOError
 
     # this should be a list of dicts
     # each dict (1/public file) could have the fields : infilename qualify convert misncore minweight bait [] radius 
@@ -180,12 +179,13 @@ def filterNodesByBackground( nwdata, c ):
     for dsd in c['ds_dicts'] :
         print(dsd['infilename'])
         zfhits_strong     |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
-                                                convert = dsd.get('convert', None), 
-                                                qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_HI'],
-                                                maxcorr = c['CORRL_HI'], debug = True, method = c['mt_method'] , adjust_pseudocount =c['adjust_pseudocount'])
+                            convert = dsd.get('convert', None), 
+                            qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_HI'],
+                            maxcorr = c['CORRL_HI'], debug = True, method = c['mt_method'] )
         zfhits_weak       |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
-                                                convert = dsd.get('convert', None),                                                                                         qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
-                                                maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] , adjust_pseudocount   =c['adjust_pseudocount'])
+                            convert = dsd.get('convert', None),
+                            qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
+                            maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] )
 
     store_first_pass_data( nwdata, c, zfhits_strong, zfhits_weak )
     
