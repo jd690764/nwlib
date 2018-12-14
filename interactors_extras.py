@@ -6,7 +6,8 @@ from os.path import isfile
 from warnings import warn
 import pickle
 import os
-from scipy.stats.distributions import norm, truncnorm
+import pandas as pd
+import scipy.stats as sp
 from statsmodels.sandbox.stats.multicomp import multipletests
 from mpmath import mp as mpmns
 
@@ -14,6 +15,7 @@ from lib import interactors as I
 from lib import markutils as mu
 from lib import rbase
 from lib import config as cf
+
 
 sow=sys.stdout.write
 sew=sys.stderr.write
@@ -733,8 +735,6 @@ def zfilter(query_ds,bg_dses,query_bait,bg_bait,logp = -3,as_dict=False,percenti
             key : z
     """
 
-    from scipy.stats.distributions import truncnorm
-
     dbgstr='DEBUG> interactors_extras.zfilter :'
 
     # because we have to do this by edge key rather than node key
@@ -797,14 +797,14 @@ def zfilter(query_ds,bg_dses,query_bait,bg_bait,logp = -3,as_dict=False,percenti
 
         out=dict() ;
         for ek in set(qeks) - {'PSEUDO_00'} : 
-           out.update({ ek : np.log10(max([1.0 - truncnorm.cdf(Z(ek),Zto0(ek),np.inf),logzero])) }) ; 
+           out.update({ ek : np.log10(max([1.0 - sp.truncnorm.cdf(Z(ek),Zto0(ek),np.inf),logzero])) }) ; 
         return out ; 
 
     else : 
         out=set() ; 
 
         for ek in set(qeks) - {'PSEUDO_00'} : 
-            if np.log10(max([1.0 - truncnorm.cdf(Z(ek),Zto0(ek),np.inf),logzero])) <= logp : 
+            if np.log10(max([1.0 - sp.truncnorm.cdf(Z(ek),Zto0(ek),np.inf),logzero])) <= logp : 
                 out.add(ek) ; 
 
     refuse=set(qeks) - out ; 
@@ -1186,10 +1186,7 @@ def zfilter_mp(query_ds,bg_dses,query_bait,bg_bait,logp = -3,as_dict=False,perce
         return out
 
 def madfilter(dataset,ctrl_fname,baitkey,qual=None,directed=False,as_dict=False,alpha=0.05,debug=False) : 
-    import pickle
 
-    import os
-    from scipy.stats.distributions import norm
     if not os.path.isfile(ctrl_fname) and not \
      os.path.isfile( cf.controlFiles + ctrl_fname) :
         raise FileNotFoundError('Could not find '+ctrl_fname) ;
@@ -1243,7 +1240,7 @@ def madfilter(dataset,ctrl_fname,baitkey,qual=None,directed=False,as_dict=False,
                 'given score '+'{:8.6}'.format(madscore)+'  \n') ;
 
         maddict.update({ e.key : madscore }) ;
-        peedict.update({ e.key : 1-norm.cdf(madscore) })
+        peedict.update({ e.key : 1-sp.norm.cdf(madscore) })
         #elif madscore > sds * 1.48 : 
             #outedges.add( e.key ) 
 
@@ -1278,8 +1275,6 @@ def dataset_edges_for_bait( ds, baitkey, qual, directed, debug = False ):
                 ' skipped due to wrong direction\n') ;
             continue ;
         else:
-            # for the reason behind this constant, cf
-            # https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation
             if debug : 
                 sys.stderr.write( 'keep this edge: ' + e.key + '\n')
             ek_ps.update({ e.key : e.to.official })
@@ -1351,19 +1346,86 @@ def read_control_data( ctrl_fname, convert, debug  ):
         
     return( allsyms, allfns, loggrid )
         
+def doNorm(norm, ekms, psms, lgrid, all_fn):
+    print('NORMALIZE: ' + str(norm))
+    if norm == 'zscore':
+
+        # get zscores for the dataset being scored
+        ds_sd   = np.std(list(ekms.values()))
+        ds_mean = np.mean(list(ekms.values()))
+        
+        ekms    = {k: (ekms[k] - ds_mean) / ds_sd for k in ekms.keys()}
+        psms    = {k: (psms[k] - ds_mean) / ds_sd for k in psms.keys()}             
+        
+        # calculate zscores for ref datasets
+        means   = np.mean(lgrid, 0).reshape(1, len(all_fn))
+        stds    = np.std(lgrid, 0).reshape(1, len(all_fn))
+
+        # update ref data
+        lgrid   = (lgrid - means) / stds
+        
+    elif norm == 'medmad':
+        
+        # get medians and mad for the dataset being scored
+        ds_mad  = mad(list(ekms.values()))
+        ds_med  = np.median(list(ekms.values()))
+
+        ekms    = {k: (ek_ms[k] - ds_mean) / ds_sd for k in ekms.keys()}
+        psms    = {k: (ps_ms[k] - ds_mean) / ds_sd for k in psms.keys()}
+        
+        # calculate scores for ref datasets
+        meds    = np.median(lgrid, 0).reshape(1, len(all_fn))
+        mads    = np.array([mad(lgrid[i]) for i in range(lgrid.shape[1])]).reshape(1, len(all_fn))
+
+        # update ref data
+        lgrid   = (lgrid - meds) / mads            
+
+    else:
+        sys.stderr.write('Normalization method ' + norm + ' is not implemented. Nothing was done to norm data.')
+
+    return (ekms, psms, lgrid )
+
+
+def remove_corr_expts_from_ref(all_sym, all_fn, psms, lgrid, maxcor, debug):
+
+    # make sure there are no missing values in ps_ms
+    v = np.array([ psms.get( all_sym[x], psms['PSEUDO']) for x in range(len(all_sym)) ])
     
-def madfilter_corr( dataset,                # network dataset to process, interactors.dataSet instance
-                    ctrl_fname,             # control file name to use, pickled syms,medians mads (*.cp2))
+    # remove datasets that are too closely correlated from reference list
+    highly_correlated_fn_indices = [ x for x in range(len(all_fn)) if np.corrcoef(v,lgrid[:,x])[0,1] > maxcor ]
+
+    if debug:
+        corrs = [str(np.corrcoef(v, lgrid[:,x])[0,1]) for x in range(len(all_fn))]
+        sys.stderr.write('interactors_extras.madfilter_corr : the following correlations '
+                         + 'were observed: \n' )
+        for i in range(len(all_fn)):
+                         sys.stderr.write( '        ' + all_fn[i] + "\t" + corrs[i] + '\n' )
+
+    if highly_correlated_fn_indices : 
+        sys.stderr.write('interactors_extras.madfilter_corr : the following experiments\n'+\
+        '        are too highly correlated with the current one for inclusion\n') ;
+        for x in highly_correlated_fn_indices  : 
+            sys.stderr.write('          '+all_fn[x]+'\n') ;
+
+    # remove the highly correlated expts
+    compgrid    = np.delete(lgrid, highly_correlated_fn_indices, 1)
+
+    return compgrid
+
+
+def madfilter_corr( dataset,                 # network dataset to process, interactors.dataSet instance
+                    ctrl_fname,              # control file name to use, pickled syms,medians mads (*.cp2))
                     #                         or a *.txt file listing one ifile per line 
-                    baitkey,                # key for the bait in dataset
-                    qual     = None,        # qualifier for this bait,
-                    directed = False,       # is the network directed/non-
-                    as_dict  = False,       # returns two dictionary objects of mad and p-value for each edge
-                    alpha    = 0.05,        # fwer or fdr deepending on method
-                    convert  = None,        # whether to convert the control file to another org 
-                    debug    = False,       #
-                    maxcorr  = 0.75,        #
-                    method   = 'fdr_bh',    # method for multiple hypothesis testing correction
+                    baitkey,                 # key for the bait in dataset
+                    qual      = None,        # qualifier for this bait,
+                    directed  = False,       # is the network directed/non-
+                    as_dict   = False,       # returns two dictionary objects of mad and p-value for each edge
+                    alpha     = 0.05,        # fwer or fdr deepending on method
+                    convert   = None,        # whether to convert the control file to another org 
+                    debug     = False,       #
+                    maxcorr   = 0.75,        #
+                    normalize = 'zscore',    # normalize refs and dataset values by using this method
+                    method    = 'fdr_bh',    # method for multiple hypothesis testing correction
                     assign_edge_ps  = True  # whether or not to modify 'p' attribute of tested edges
 ) : 
 
@@ -1374,88 +1436,74 @@ def madfilter_corr( dataset,                # network dataset to process, intera
         ctrl_fname : pickled syms,medians mads 
         baitkey : key of bait
     """
-
-    ( allsyms, allfns, loggrid ) = read_control_data( ctrl_fname, convert, debug )
-    symset      = set(allsyms) ; 
-    pseudoindex = allsyms.index('PSEUDO') ;
-    #pseudoscore = dataset.nodes[baitkey].edges.get('PSEUDO_00', PSEUDO_DEFAULT)
-    idstr       = baitkey + '>' + 'PSEUDO_00' + ':' + qual
-    pseudoscore = dataset.edges[idstr].meanscore if idstr in dataset.edges else PSEUDO_DEFAULT
-    pseudoscore = np.log10( pseudoscore )
     
-    if not as_dict : 
-        outedges = set() ;
+    # get reference dataset
+    ( allsyms, allfns, loggrid ) = read_control_data( ctrl_fname, convert, debug )
 
-    # this loop now does X things : 
-    #   1) get a vector of scores to test
-    #       -specified by bait, direction, qual
-    #   2) put those scores into dicts :
-
+    # dicts for dataset being scored
     ek_ps, ek_ms, ps_ms = dataset_edges_for_bait( dataset, baitkey, qual, directed, debug )
 
-    # NEXT : remove datasets from background that are highly correlated with the query dataset
-    v = np.array([ ps_ms.get( allsyms[x], ps_ms['PSEUDO']) for x in range(len(allsyms)) ])
+    # normalize values
+    if normalize != None:
+        ek_ms, ps_ms, loggrid = doNorm(normalize, ek_ms, ps_ms, loggrid, allfns)
 
-    highly_correlated_fn_indices = [ x for x in range(len(allfns)) if np.corrcoef(v,loggrid[:,x])[0,1] > maxcorr ]
+    # remove experiments from among the ref samples that correlate with the current dataset 
+    compgrid    = remove_corr_expts_from_ref(allsyms, allfns, ps_ms, loggrid, maxcorr, debug)  
+    
+    # calculate mad scores and p values
+    symset      = set(allsyms) ; 
+    pseudoindex = allsyms.index('PSEUDO') ;
+
+    eks         = list(ek_ps.keys()) # edge keys
+    inds        = [allsyms.index(dataset.edges[ek].to.official) if dataset.edges[ek].to.official in symset else pseudoindex for ek in eks ]
+    mads        = [( ek_ms[eks[i]] - np.median(compgrid[inds[i],:])) / ie.mad(compgrid[inds[i],:]) / 1.48 for i in range(len(eks))]
+    p05_cuts    = [1.65 * 1.48 * ie.mad(compgrid[inds[i],:]) + np.median(compgrid[inds[i],:]) for i in range(len(eks))]
+    bkgs        = ["|".join( map( str, compgrid[inds[i],:])) for i in range(len(eks))]
+    pees        = [1 - sp.norm.cdf(madscores[i]) for i in range(len(eks))]
 
     if debug:
-        corrs = [str(np.corrcoef(v,loggrid[:,x])[0,1]) for x in range(len(allfns))]
-        sys.stderr.write('interactors_extras.madfilter_corr : the following correlations '
-                         + 'were observed: \n' )
-        for i in range(len(allfns)):
-                         sys.stderr.write( '        ' + allfns[i] + "\t" + corrs[i] + '\n' )
+        nsafs   = [ek_ms[ek] for ek in eks]        
+        sys.stderr.write(''.join([str('DEBUG> interactors_extras.madfilter_corr : edge='+eks[i] +
+                                      ' madscore='+'{:8.6}'.format(mads[i])+'; nsaf=' +
+                                      '{:8.6}'.format(nsafs[i]) + ' p05_cut='+ '{:8.6}'.format(p05_cuts[i]) + ' pval=' +
+                                      '{:8.6}'.format(pees[i]) + '  \n') for i in range(len(eks))]))
 
-    if highly_correlated_fn_indices : 
-        sys.stderr.write('interactors_extras.madfilter_corr : the following experiments\n'+\
-        '        are too highly correlated with the current one for inclusion\n') ;
-        for x in highly_correlated_fn_indices  : 
-            sys.stderr.write('          '+allfns[x]+'\n') ;
+    if False: # this was the original codexs
+        maddict     = dict()
+        peedict     = dict()
+        bkgdict     = dict()
 
-    # remove the highly correlated expts
-    compgrid = np.delete(loggrid,highly_correlated_fn_indices,1)
+        for ek in ek_ps.keys() :
+            e = dataset.edges[ek] ;
+            i = pseudoindex
 
-    # calculate mad scores and p values
-    maddict  = dict()
-    peedict  = dict()
-    bkgdict  = dict()
+            if e.to.official in symset : 
+                i    = allsyms.index( e.to.official )
 
-    for ek in ek_ps.keys() :
-        e = dataset.edges[ek] ;
-        i = pseudoindex
-        #if e.to.official not in symset : 
-        #    madscore = (ek_ms[ek]- np.median(compgrid[pseudoindex,:])) / mad(compgrid[pseudoindex,:])/ 1.48 ;
-        #    bkgvls   = compgrid[pseudoindex,:]
-        #    if debug :
-        #        sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge '+e.key+\
-        #        ' not in background - given score '+'{:8.6}'.format(madscore)+' (pseudocounted) \n') ;
+            # for the reason behind this constant, cf
+            # https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation
+            madscore = ( ek_ms[ek] - np.median(compgrid[i,:])) / mad(compgrid[i,:]) / 1.48 ;
+            p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
+            bkgvls   = compgrid[i,:]
+            pval     = 1 - sp.norm.cdf(madscore)
 
-        #elif e.to.official in symset :
-        if e.to.official in symset : 
-            i    = allsyms.index( e.to.official )
+            maddict.update({ e.key : madscore }) ;
+            peedict.update({ e.key : pval })
+            bkgdict.update({ e.key : "|".join( map( str, bkgvls)) })
 
-        madscore = ( ek_ms[ek] - np.median(compgrid[i,:])) / mad(compgrid[i,:]) / 1.48 ;
-        p05_cut  = 1.65 * 1.48 * mad(compgrid[i,:]) + np.median(compgrid[i,:])
-        bkgvls   = compgrid[i,:]
-        pval     = 1-norm.cdf(madscore)
-
-        maddict.update({ e.key : madscore }) ;
-        peedict.update({ e.key : pval })
-        bkgdict.update({ e.key : "|".join( map( str, bkgvls)) })
-
-        if debug : 
-            sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge='+e.key +
-                             ' madscore='+'{:8.6}'.format(madscore)+'; nsaf=' +
-                             '{:8.6}'.format(ek_ms[ek]) + ' p05_cut='+ '{:8.6}'.format(p05_cut) + ' pval=' +
-                             '{:8.6}'.format(pval) + '  \n')
+            if debug : 
+                sys.stderr.write('DEBUG> interactors_extras.madfilter_corr : edge='+e.key +
+                                 ' madscore='+'{:8.6}'.format(madscore)+'; nsaf=' +
+                                 '{:8.6}'.format(ek_ms[ek]) + ' p05_cut='+ '{:8.6}'.format(p05_cut) + ' pval=' +
+                                 '{:8.6}'.format(pval) + '  \n')
             
         
-    eks  = list( maddict.keys() ) 
-    mads = list( maddict.values() ) 
-    pees = list( peedict.values() )
-    bkgs = list( bkgdict.values() )
+        eks  = list( maddict.keys() ) 
+        mads = list( maddict.values() ) 
+        pees = list( peedict.values() )
+        bkgs = list( bkgdict.values() )
 
     rejects, adjpees = multipletests( pees, alpha = alpha, method = method )[0:2]
-
     passed = { eks[x] for x in range(len(eks)) if rejects[x] }
 
     if assign_edge_ps : 
@@ -1464,7 +1512,6 @@ def madfilter_corr( dataset,                # network dataset to process, intera
             dataset.edges[eks[i]].p_ori = pees[i]
             dataset.edges[eks[i]].bkg   = bkgs[i]
             
-    #adjval = { pees[x] for x in range(len(eks)) if rejects[x] }
     if debug : 
         import colorama
         sys.stderr.write('DEBUG> Results summary:\n') ;
@@ -1472,17 +1519,17 @@ def madfilter_corr( dataset,                # network dataset to process, intera
         for x in range(len(eks)) : 
             e = dataset.edges[eks[x]]
             if rejects[x] : 
-                print(colorama.Back.BLUE+repr(x),eks[x],peedict[eks[x]],maddict[eks[x]],rejects[x],\
-                 adjpees[x],repr(-1*np.log10(e.meanscore))+colorama.Back.BLACK,sep='\t')
+                print(colorama.Back.BLUE + repr(x), eks[x], pees[x], mads[x], rejects[x],\
+                 adjpees[x], repr(-1*np.log10(e.meanscore)) + colorama.Back.BLACK, sep='\t')
             else : 
                 #print(colorama.Back.BLUE,end='')
-                print(x,eks[x],peedict[eks[x]],maddict[eks[x]],rejects[x],\
-                 adjpees[x],-1*np.log10(e.meanscore),sep='\t')
+                print(x, eks[x], pees[x], mads[x], rejects[x],\
+                 adjpees[x], -1*np.log10(e.meanscore), sep='\t')
                 #print(colorama.Style.RESET_ALL,end='')
 
     if as_dict : 
-        apdict = dict(zip(eks,adjpees)) ; 
-        return (maddict,apdict) ;
+        return ( dict(zip(eks, mads)),
+                 dict(zip(eks,adjpees)))
     else :
         return passed
 
@@ -1515,7 +1562,7 @@ def createReferenceFile( inputFile, overWrite = False ):
         pslogvals      = np.log10(list(pseudodict.values()))
         pslogmad       = mad(pslogvals) ; 
         pslogmedian    = np.percentile(pslogvals,50)
-        pslvps_hi      = 1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
+        pslvps_hi      = 1 - sp.norm.cdf((pslogvals-pslogmedian)/pslogmad)
         #pslvps_lo=1-norm.cdf((pslogvals-pslogmedian)/pslogmad)
 
         rejected_ds_hi = multipletests(pslvps_hi,alpha=0.05)[0]

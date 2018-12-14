@@ -95,6 +95,7 @@ def readYAMLfile( yamlfile, c ) :
     c['FLOOR_LO']      = yout['options'].get('floor_lo',4)
     c['CORRL_HI']      = yout['options'].get('corrl_hi',0.70)
     c['CORRL_LO']      = yout['options'].get('corrl_lo',0.70)
+    c['normalize']     = yout['options'].get('normalize', None)
     c['rescue_deg']    = yout['options'].get('degree_to_rescue',1)
     c['valid_quals']   = yout['options'].get('valid_degree_quals',{'wt',})
     c['mt_method']     = yout['options'].get('mt_method','fdr_bh')
@@ -171,17 +172,20 @@ def filterNodesByBackground( nwdata, c ):
     #sys.setrecursionlimit(1200)
     #pickle.dump(nwdata, open('/usr/local/share/py/djscripts/tmp/nwdata.pk', 'wb'))
     #pickle.dump(c, open('/usr/local/share/py/djscripts/tmp/nwdata_conf.pk', 'wb'))
+    #sys.exit
     
     for dsd in c['ds_dicts'] :
         print(dsd['infilename'])
         zfhits_strong     |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
-                                                convert = dsd.get('convert', None), 
+                                                convert = dsd.get('convert', None), normalize = c['normalize'],
                                                 qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_HI'],
                                                 maxcorr = c['CORRL_HI'], debug = True, method = c['mt_method'] )
+        
         zfhits_weak       |= ie.madfilter_corr( nwdata, dsd['control'], tokey(c, dsd['bait']),
-                                                convert = dsd.get('convert', None),                                                                                         qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
+                                                convert = dsd.get('convert', None), normalize = c['normalize'],
+                                                qual = dsd.get('qualify'), directed = True, alpha = c['ALPHA_LO'],
                                                 maxcorr = c['CORRL_LO'], debug = DB, method = c['mt_method'] )
-
+    
     store_first_pass_data( nwdata, c, zfhits_strong, zfhits_weak )
     
         

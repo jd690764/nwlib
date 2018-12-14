@@ -16,12 +16,14 @@ import lib.rbase as rb
 import lib.filters as flt
 import pandas as pd
 from lib import config as cg
+from pyteomics import parser as omicsparser
 
 from network.models import Entrez, Ncbiprots, Dproc
 
 rb.load('dup')
 
 PSEUDO_LENGTH = 375.0
+PSEUDO_TRYPTIC_PEPTIDE = 39.2 # mean tryptic peptide count for a protein (NP_xxx)
 orgs          = { 'hs': 9606, 'mm': 10090 }
 taxids        = { 9606: 'human', 10090: 'mouse'}
 
@@ -111,7 +113,7 @@ def make_gene_reference( org ):
         
 def make_protein_reference( org ):
 
-    prot   = Ncbiprots.objects.all().values( 'gi', 'acc', 'eid', 'protname', 'len', 'symbol', 'taxid' )
+    prot   = Ncbiprots.objects.all().values( 'gi', 'acc', 'eid', 'protname', 'len', 'symbol', 'taxid', 'seq' )
     if org == orgs[ 'hs' ]:
         global hspREF
         hspREF = { x['acc']: x for x in prot if x['taxid'] == org }
@@ -198,10 +200,16 @@ class MSdata(object) :
         self.__widn__    = 0 
         self.pseudoscore = 0.0   
         self.background  = dict()
+        self.scoreMethod  = 'nsaf'
         
         # key : symbol
         # value : counts in blanking data
 
+    def scoreMeth(self,method = None) :
+        if method != None:
+            self.scoreMethod  = method 
+        return self.scoreMethod
+            
     def parseLane(self,infobj,unTruncate=False,sep='\t') : 
         # argument is now an input file object
         # dec15/jan15 revision : parse from excel
@@ -557,8 +565,9 @@ class MSdata(object) :
         self.fpd=stats.poisson(np.mean(inputs))
 
 
-    def score( self, scoreBy = "total", norm2len = True ) :
+    def score( self, scoreBy = "total", norm2len = True, method = 'nsaf' ) :
 
+        self.scoreMeth(method)
         if scoreBy in ( "max","Max","MAX" ) :
             p=lambda x : x.maxcount
         elif scoreBy in ( "total","Total","TOTAL" ):
@@ -571,12 +580,16 @@ class MSdata(object) :
         # the 'p' function gets the correct 'property' of that line
         eidlens = dict() 
         bw      = 0.0
+        tsum    = 0 # total count
         for d in self.fwdata :
             if not notNone( [d.entrez, d.organism] ) or d.organism == None:
                 #print( str(d.entrez) + ' ' + str(d.organism))                
                 continue
+
+            peplen = eidLen( d.entrez, d.organism, method )
             #print( str(d.official) + str(d.desc) + str(d.entrez) + ' ' + str(d.organism))            
-            eidlens.update({ d : eidLen( d.entrez, d.organism )})
+            eidlens.update({ d : peplen})
+            d.setLen(peplen)
             # this should be 'any'
             #if any([ r.match(d.official) for r in flt.exo ]) :
             if notNone([ r.match(d.official) for r in flt.exo ]) :
@@ -586,10 +599,9 @@ class MSdata(object) :
                 print( 'skip bait: ' + d.official )
                 pass 
             else :
-                bw += p(d)/eidlens[d]; 
-
-        self.pseudo = 1.0 / bw / PSEUDO_LENGTH 
-
+                bw   += p(d)/eidlens[d]; 
+                tsum += p(d)
+                
         for d in self.fwdata : 
                         
             counts_this_gene = 0.0 
@@ -614,10 +626,20 @@ class MSdata(object) :
             else : 
                 counts_this_gene = p(d) 
 
-            uselen = eidlens.get(d,PSEUDO_LENGTH) 
-            d.setScore(counts_this_gene / bw / uselen) 
-
-
+            if method == 'nsaf_pept':
+                self.pseudo = 1.0 / tsum / PSEUDO_TRYPTIC_PEPTIDE
+                uselen = eidlens.get( d, PSEUDO_TRYPTIC_PEPTIDE) 
+                d.setScore(counts_this_gene / tsum / uselen)
+            elif method == 'nsaf_mod':
+                self.pseudo = 1.0 / tsum / np.log(PSEUDO_LENGTH)
+                uselen = eidlens.get( d, PSEUDO_LENGTH) 
+                d.setScore(counts_this_gene / tsum / np.log(uselen))
+            else : # default: nsaf
+                self.pseudo = 1.0 / bw / PSEUDO_LENGTH     
+                uselen = eidlens.get(d,PSEUDO_LENGTH) 
+                d.setScore(counts_this_gene / bw / uselen) 
+            #print(d.official + ' ' + str(d.score) + ' ' + str(d.peplen))
+            
     def syncToEntrez( self, tryhard = True, debug = False, bestpepdb = 'RPHs', reference = hsgREF ) :
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -725,7 +747,8 @@ class MSdata(object) :
         else :
             outfile=open(fname,"w") 
 
-        outfile.write("ID\tBAIT\tPREY\tNSAF\tORGANISM-BAIT\tORGANISM-PREY\tENTREZ-BAIT\tENTREZ-PREY\tDATASET\tNOTES\n") 
+        meth = self.scoreMeth().upper()
+        outfile.write("ID\tBAIT\tPREY\t" + meth + "\tORGANISM-BAIT\tORGANISM-PREY\tENTREZ-BAIT\tENTREZ-PREY\tDATASET\tNOTES\n") 
 
         for d in outData :
 
@@ -763,7 +786,8 @@ class MSdata(object) :
                     worg=d.organism 
                     weid=d.entrez 
 
-            notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid, worg ))+'_raw_'+repr(d.totalcounts) 
+            #notestring = 'prey:'+woff+'_len_'+repr(eidLen( weid, worg ))+'_raw_'+repr(d.totalcounts)
+            notestring = 'prey:'+woff+'_len_'+repr(d.peplen)+'_raw_'+repr(d.totalcounts)             
             if woff in coverage:
                 cov_v = '-1' if coverage[woff][0] == '' else str(round(float(coverage[woff][0]),2))
                 notestring = notestring + '_cov_' + cov_v + '_upept_' + str(coverage[woff][1])
@@ -1165,30 +1189,53 @@ def desc_interpreter( desc, tryhard = True, debug = False, bestpepdb = 'RPHs', r
 
     return (entrez,sym,org)
 
-def eidLen( eid, org, suppress = True ) : 
+def eidLen( eid, org, method, suppress = True,
+            minLength = 5 # min peptide length to be counted among digest results 
+) : 
 
     if not notNone( [eid, org] ):
         return None
     
-    org = int(org)
-    eid = int(eid) # some eids are '00' !
+    org  = int(org)
+    eid  = int(eid) # some eids are '00' !
+
+    isnp = lambda acc : 'NP_' in acc and acc in pREF[org]
+    isxp = lambda acc : 'XP_' in acc and acc in pREF[org]
+
+    default_length = PSEUDO_LENGTH
     
-    if org in gREF and eid > 0 and eid in gREF[ org ]['eid'] :
+    if method in ['nsaf', 'nsaf_mod'] :
+        if org in gREF and eid > 0 and eid in gREF[ org ]['eid'] :
 
-        possPeps = gREF[ org ][ 'eid' ][ eid ]['peptide'].split(";")
-        isnp     = lambda acc : 'NP_' in acc and acc in pREF[org]
-        isxp     = lambda acc : 'XP_' in acc and acc in pREF[org]
+            possPeps = gREF[ org ][ 'eid' ][ eid ]['peptide'].split(";")
+        
+            if   any([ isnp(x) for x in possPeps ]) :
+                return float("{0:.1f}".format(np.mean([ pREF[org][x]['len'] for x in possPeps if isnp(x) ])))
+            elif any([ isxp(x) for x in possPeps ]) :
+                return float("{0:.1f}".format(np.mean([ pREF[org][x]['len'] for x in possPeps if isxp(x) ])))
 
-        if   any([ isnp(x) for x in possPeps ]) :
-            return float("{0:.1f}".format(np.mean([ pREF[org][x]['len'] for x in possPeps if isnp(x) ])))
-        elif any([ isxp(x) for x in possPeps ]) :
-            return float("{0:.1f}".format(np.mean([ pREF[org][x]['len'] for x in possPeps if isxp(x) ])))
+    elif method == 'nsaf_pept' :
 
+        if org in pREF and eid > 0 :
+
+            possPeps = [acc for acc in pREF[org].keys() if pREF[org][acc]['eid'] == eid]
+
+            if   any([ isnp(x) for x in possPeps ]) :
+                return float("{0:.1f}".format(np.mean([len(omicsparser.cleave(pREF[org][x]['seq'].upper(), omicsparser.expasy_rules['trypsin'], min_length = minLength)) for x in possPeps if isnp(x) ])))
+            elif any([ isxp(x) for x in possPeps ]) :
+                return float("{0:.1f}".format(np.mean([len(omicsparser.cleave(pREF[org][x]['seq'].upper(), omicsparser.expasy_rules['trypsin'], min_length = minLength)) for x in possPeps if isxp(x) ])))
+
+        default_length = PSEUDO_TRYPTIC_PEPTIDE
+
+    else :
+        sys.stderr.write('Uknown method for scoring: ' + str(method))        
 
     if not suppress : 
         sys.stderr.write('NOTE: No satisfactory peptide accessions for eid {}, using average length of 375.\n'.format(eid)) 
+            
+    return default_length
+    
 
-    return PSEUDO_LENGTH
 
 def dupConvert( outfile ):
 
