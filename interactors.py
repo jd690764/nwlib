@@ -278,6 +278,7 @@ class bgedge(object):
                        edge respectively.
         meanscore    - mean score of contained interactions
         p            - p value for the interaction
+        p_ori        - p value for the interaction (unadjusted)
         qual         - qualification string of contituent edges
         source       - interaction source string if container edges are uniform, otherwise.
         to           - destination node for interactions (same conventions as interaction class).
