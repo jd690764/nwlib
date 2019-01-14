@@ -240,10 +240,8 @@ class pephash(dict) :
             elif line[0:7] == 'VERSION' :
 
                 #linel=' '.join(line.split()).split() ;
-                #gi = line.split(':')[1].strip() ;
-                # gi has been retired
-                gi = 0
-                
+                gi=line.split(':')[1].strip() ;
+
             elif '/gene=' in line : 
                 sym=line.split('"')[1] ;
 
@@ -354,9 +352,7 @@ def parse( infilename ) :
 
             elif line[0:7] == 'VERSION' :
 
-                # gi was retired
-                #gi     = line.split(':')[1].strip()
-                gi     = 0
+                gi     = line.split(':')[1].strip()
 
             elif '/gene=' in line : 
                 sym    = line.split('"')[1]
@@ -557,6 +553,17 @@ def xml2bin( infilename, outfilename, type='pickle', insist_on_living=True)  :
             raise ValueError ; 
 
 
+        # 4 December 17 : chromosomal start & end positions
+
+        commentaries=[ c for c in element.findall(".//Gene-commentary")
+        if c[0].get('value') == 'assembly' and c[2].text == 'Reference' ]
+
+        intertrees=[ c.find(".//Seq-interval") for c in commentaries ]
+
+        newGene.update({ 'Coordinates' : 
+            { eseek(c,'Gene-commentary_heading').text : \
+                (int(inter[0].text),int(inter[1].text))  for c,inter in zip(commentaries,intertrees) }})
+
         element.clear() ;
         for ancestor in element.xpath('ancestor-or-self::*'):
             while ancestor.getprevious() is not None:
@@ -589,7 +596,7 @@ def r2sio(record)  :
     out=io.StringIO() ;
 
     for line in record : 
-        out.write(line) ;
+        out.write(str(line)) ;
     record.close() ;
 
     out.seek(0) ;
@@ -608,7 +615,7 @@ def mkCDDtree(debug=False) :
 
     if debug : 
         sys.stdout.write('Fetching CDDID table ... ') ; 
-    sio = r2sio(urllib.request.urlopen(cf.cddidTableFtp)) ; 
+    sio = r2sio(urllib.request.urlopen(cf.cddIdTableFtp)) ; 
     if debug : 
         sys.stdout.write('Decompressing ... ') ; 
         sys.stdout.flush() ; 
